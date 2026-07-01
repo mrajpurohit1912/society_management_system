@@ -1,0 +1,28 @@
+@startuml c4_context_diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+' Layout Configurations
+LAYOUT_WITH_LEGEND()
+
+title System Context Diagram - Society Maintenance Management System (SMMS)
+
+Person(admin, "Admin (Society/System Admin)", "Manages society master data (wings, floors, flats, committee members), user accounts, and system-wide configurations.")
+Person(officer, "Society Officer (Chairman/Secretary/Treasurer)", "Manages maintenance collections, registers payment updates, creates notices, manages expenses, and responds to complaints.")
+Person(member, "Society Member / Resident", "Views notice boards, tracks payment status/receipts, monitors expenses, raises complaints, and manages personal profile.")
+
+System(smms, "Society Maintenance Management System", "Web-based application for managing society operations, maintenance collections, expenses, notices, and complaint resolution.")
+
+System_Ext(whatsapp, "WhatsApp API Gateway", "External messaging system used to broadcast notices, send payment receipts, and notify users of complaint status.")
+System_Ext(sms_gateway, "SMS Gateway", "External telecom service used for broadcasting urgent alerts, OTP verification, and critical notices.")
+System_Ext(email_service, "Email Service (Optional)", "Optional external service used for mailing monthly statements, transaction receipts, and official notifications.")
+
+' Relationships
+Rel(admin, smms, "Configures society data, manages users, and views audit/system logs", "HTTPS")
+Rel(officer, smms, "Collects maintenance, records expenses, posts notices, and replies to complaints", "HTTPS")
+Rel(member, smms, "Views notices, tracks dues/payments, and submits complaints", "HTTPS")
+
+Rel_R(smms, whatsapp, "Sends transaction notifications and notice alerts via", "HTTPS REST API")
+Rel_D(smms, sms_gateway, "Sends OTPs and critical alerts via", "HTTPS REST API")
+Rel_D(smms, email_service, "Sends monthly receipts and statements via", "SMTP / HTTPS REST API")
+
+@endum

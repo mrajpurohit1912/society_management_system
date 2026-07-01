@@ -1,0 +1,42 @@
+@startuml c4_component_diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+' Layout Configurations
+LAYOUT_WITH_LEGEND()
+
+title Component Diagram for Backend API Application
+
+Container(frontend_app, "Frontend Application", "Angular, TypeScript", "Provides the user interface for all roles via a responsive web application.")
+ContainerDb(database, "SQL Database", "Microsoft SQL Server", "Stores data relating to users, societies, wings, floors, flats, members, payments, complaints, expenses, notices, and logs.")
+
+System_Ext(whatsapp, "WhatsApp API Gateway", "External messaging system used to broadcast notices, send payment receipts, and notify users of complaint status.")
+System_Ext(sms_gateway, "SMS Gateway", "External telecom service used for broadcasting urgent alerts, OTP verification, and critical notices.")
+
+Container_Boundary(backend_api, "Backend API Application") {
+    Component(main_router, "Main Router (main.py)", "FastAPI", "Bootstraps application, handles middleware, exceptions, and delegates sub-routes to specific controllers.")
+    Component(auth_service, "Auth & Security Service", "FastAPI Dep, JWT", "Handles password hashing, token validation, session management, and role-based access control (RBAC).")
+    
+    Component(routers, "API Routers", "FastAPI APIRouter", "Controllers for Auth, Society, Members, Collections, Complaints, Notices, and Expenses. Formats HTTP request/responses.")
+    Component(services, "Business Logic Services", "Python Classes", "Implements business rules (e.g., verifying payments, logic for closing complaints, structuring notices).")
+    Component(repositories, "Database Repositories", "SQLAlchemy / pyodbc", "Handles database operations, executes queries, and manages transaction states for SQL Server.")
+    Component(notification_client, "Notification Clients", "HTTP Client", "Wraps HTTP REST API calls to trigger external WhatsApp and SMS integrations.")
+}
+
+' External interactions
+Rel(frontend_app, main_router, "Sends API requests to", "HTTPS / JSON")
+Rel(main_router, routers, "Routes requests to", "Python calls")
+
+' Routers relationships
+Rel(routers, auth_service, "Secures endpoints using", "FastAPI Depends")
+Rel(routers, services, "Delegates requests to", "Method calls")
+
+' Services relationships
+Rel(services, repositories, "Queries and updates data via", "Method calls")
+Rel(services, notification_client, "Sends alerts and logs through", "Method calls")
+
+' Storage and External Interfaces
+Rel(repositories, database, "Executes queries on", "SQL/ODBC")
+Rel(notification_client, whatsapp, "Calls", "HTTPS/REST")
+Rel(notification_client, sms_gateway, "Calls", "HTTPS/REST")
+
+@endum

@@ -1,0 +1,37 @@
+@startuml c4_container_diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+' Layout Configurations
+LAYOUT_WITH_LEGEND()
+
+title Container Diagram - Society Maintenance Management System (SMMS)
+
+Person(admin, "Admin (Society/System Admin)", "Manages society master data (wings, floors, flats, committee members), user accounts, and system-wide configurations.")
+Person(officer, "Society Officer (Chairman/Secretary/Treasurer)", "Manages maintenance collections, registers payment updates, creates notices, manages expenses, and responds to complaints.")
+Person(member, "Society Member / Resident", "Views notice boards, tracks payment status/receipts, monitors expenses, raises complaints, and manages personal profile.")
+
+System_Boundary(smms_boundary, "Society Maintenance Management System") {
+    Container(frontend_app, "Frontend Application", "Angular, TypeScript", "Provides the user interface for all roles (Admin, Officer, Member) via a responsive web application.")
+    Container(backend_api, "Backend API Application", "Python, FastAPI", "Handles business logic, JWT authentication, role-based authorization, database transactions, and orchestrates external services.")
+    ContainerDb(database, "SQL Database", "Microsoft SQL Server", "Stores data relating to users, societies, wings, floors, flats, members, payments, complaints, expenses, notices, and logs.")
+}
+
+System_Ext(whatsapp, "WhatsApp API Gateway", "External messaging system used to broadcast notices, send payment receipts, and notify users of complaint status.")
+System_Ext(sms_gateway, "SMS Gateway", "External telecom service used for broadcasting urgent alerts, OTP verification, and critical notices.")
+System_Ext(email_service, "Email Service (Optional)", "Optional external service used for mailing monthly statements, transaction receipts, and official notifications.")
+
+' Relationships between Users and Frontend
+Rel(admin, frontend_app, "Interacts with via web browser", "HTTPS")
+Rel(officer, frontend_app, "Interacts with via web browser", "HTTPS")
+Rel(member, frontend_app, "Interacts with via web browser", "HTTPS")
+
+' Relationships between Frontend and Backend
+Rel(frontend_app, backend_api, "Makes API calls to", "HTTPS / JSON / JWT")
+
+' Relationships between Backend and Database / External Systems
+Rel(backend_api, database, "Reads from and writes to", "SQL / pyodbc / SQLAlchemy")
+Rel_R(backend_api, whatsapp, "Sends transaction notifications and notice alerts via", "HTTPS REST API")
+Rel_D(backend_api, sms_gateway, "Sends OTPs and critical alerts via", "HTTPS REST API")
+Rel_D(backend_api, email_service, "Sends monthly receipts and statements via", "SMTP / HTTPS REST API")
+
+@endum
