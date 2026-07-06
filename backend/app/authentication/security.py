@@ -4,8 +4,10 @@ import os
 from typing import Dict, Tuple
 import jwt
 
+from app.core.config import settings
+
 # Load security parameters from environment variables (fallback to safe dev values)
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+SECRET_KEY = settings.JWT_SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 30

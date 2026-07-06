@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
-from passlib.context import CryptContext
 from google.oauth2 import id_token
 from google.auth.transport import requests
+import bcrypt
 
 from app.authentication.models import UserModel
 from app.authentication.schemas import (
@@ -18,8 +18,15 @@ from app.core.cache import RedisService
 # Type variable bound to Pydantic schemas
 T = TypeVar("T")
 
-# Cryptographic context for secure password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    """
+    Hash a raw password string using native bcrypt.
+    """
+    pwd_bytes = password.encode("utf-8")
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+
 
 
 class SignupStrategy(ABC, Generic[T]):
@@ -58,7 +65,7 @@ class UsernamePasswordStrategy(SignupStrategy[UsernamePasswordSignupRequest]):
             raise ValueError("Username is already taken")
 
         # 2. Security: Hash the raw password
-        hashed_password = pwd_context.hash(payload.password)
+        hashed_password = hash_password(payload.password)
 
         # 3. Persistence: Write UserModel and AuthCredentialModel records via Repository
         user = await repo.create_user_with_credentials(
@@ -87,7 +94,7 @@ class EmailPasswordStrategy(SignupStrategy[EmailPasswordSignupRequest]):
             raise ValueError("Email is already registered")
 
         # 2. Hash password
-        hashed_password = pwd_context.hash(payload.password)
+        hashed_password = hash_password(payload.password)
 
         # 3. Save to DB
         user = await repo.create_user_with_credentials(
