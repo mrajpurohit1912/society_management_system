@@ -8,6 +8,7 @@ from alembic import context
 
 # 1. Import your unified Base and all feature models to register metadata
 from app.core.database import Base
+from app.core.database import settings
 from app.authentication.models import UserModel, AuthCredentialModel, RefreshTokenModel
 from app.payments.models import PaymentModel
 
@@ -33,7 +34,7 @@ if os.path.exists(env_path):
                     os.environ[key] = val
 
 # 3. Dynamic Database URL loading from environment (.env)
-DB_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:enterprise_secure_password@localhost:5432/society_db")
+DB_URL = settings.DATABASE_URL
 config.set_main_option("sqlalchemy.url", DB_URL)
 
 

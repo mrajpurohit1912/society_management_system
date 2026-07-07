@@ -12,10 +12,7 @@ app = FastAPI(
 
 # Setup CORS (Cross-Origin Resource Sharing)
 # Configure these origins according to production deployment domain
-origins = [
-    "http://localhost:3000",  # Default local React/Next.js port
-    "http://127.0.0.1:3000",
-]
+origins = ["*"]     
 
 app.add_middleware(
     CORSMiddleware,
