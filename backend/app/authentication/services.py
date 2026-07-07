@@ -9,12 +9,21 @@ from app.authentication.strategies import (
     EmailPasswordStrategy,
     MobileOTPStrategy,
     GoogleStrategy,
+    SigninStrategy,
+    UsernameSigninStrategy,
+    EmailPasswordSigninStrategy,
+    MobileOTPSigninStrategy,
+    GoogleSigninStrategy,
 )
 from app.authentication.schemas import (
     UsernamePasswordSignupRequest,
     EmailPasswordSignupRequest,
     MobileOTPSignupRequest,
     GoogleSignupRequest,
+    UsernameSigninRequest,
+    EmailPasswordSigninRequest,
+    MobileOTPSigninRequest,
+    GoogleSigninRequest,
 )
 from app.core.cache import RedisService
 
@@ -66,3 +75,40 @@ class AuthOrchestratorService:
                 f"No authentication strategy configured for request payload of type {type(payload).__name__}"
             )
         return await strategy.signup(db, payload)
+
+
+class LoginOrchestratorService:
+    """
+    Orchestrator Service for the Authentication / Signin Slice.
+    Registers concrete signin strategies and executes the correct validation flow
+    based on the runtime type of the request payload.
+    """
+    def __init__(self, redis_service: RedisService, google_client_id: str):
+        """
+        Initialize the orchestrator and register the active login strategies.
+        """
+        self._strategies: Dict[Type[BaseModel], SigninStrategy] = {}
+        
+        # Dynamic strategy registration (Inversion of Control)
+        self.register(UsernameSigninRequest, UsernameSigninStrategy())
+        self.register(EmailPasswordSigninRequest, EmailPasswordSigninStrategy())
+        self.register(MobileOTPSigninRequest, MobileOTPSigninStrategy(redis_service))
+        self.register(GoogleSigninRequest, GoogleSigninStrategy(google_client_id))
+
+    def register(self, payload_type: Type[BaseModel], strategy: SigninStrategy) -> None:
+        """
+        Register a strategy class for a specific request model class.
+        """
+        self._strategies[payload_type] = strategy
+
+    async def execute_signin(self, db: AsyncSession, payload: BaseModel) -> UserModel:
+        """
+        Lookup the registered strategy for the incoming payload type and run the signin.
+        """
+        strategy = self._strategies.get(type(payload))
+        if not strategy:
+            raise ValueError(
+                f"No signin strategy configured for request payload of type {type(payload).__name__}"
+            )
+        return await strategy.signin(db, payload)
+

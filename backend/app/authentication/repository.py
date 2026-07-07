@@ -34,6 +34,25 @@ class UserRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_user_by_credential(
+        self, provider: str, identifier: str
+    ) -> Optional[tuple[UserModel, AuthCredentialModel]]:
+        """Fetch user and credential in one query for signin verification."""
+        query = (
+            select(UserModel, AuthCredentialModel)
+            .join(AuthCredentialModel, UserModel.user_id == AuthCredentialModel.user_id)
+            .where(
+                AuthCredentialModel.provider == provider,
+                AuthCredentialModel.identifier == identifier
+            )
+        )
+        result = await self.db.execute(query)
+        row = result.first()
+        if row:
+            # SQLAlchemy returns a tuple (UserModel, AuthCredentialModel)
+            return row[0], row[1]
+        return None
+
     async def create_user_with_credentials(
         self,
         first_name: str,

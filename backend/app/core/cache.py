@@ -23,3 +23,7 @@ class RedisService:
             return False
             
         return stored_otp == otp_code
+
+    async def invalidate_otp(self, phone: str) -> None:
+        """Deletes the stored OTP from Redis so it cannot be reused."""
+        await self.client.delete(f"otp:{phone}")

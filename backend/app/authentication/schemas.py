@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field, EmailStr
+from enum import Enum
 
 # --- Domain Entities ---
 
@@ -49,3 +50,22 @@ class MobileOTPSignupRequest(BaseSignupRequest):
 
 class GoogleSignupRequest(BaseModel):
     google_id_token: str
+
+
+# Schema for LoginRequest
+class UsernameSigninRequest(BaseModel):
+    username: str = Field(..., min_length=4, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
+    password: str = Field(..., min_length=8, max_length=128)
+
+class EmailPasswordSigninRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+
+class MobileOTPSigninRequest(BaseModel):
+    phone_number: str = Field(..., pattern=r"^\+?[1-9]\d{1,14}$")
+    otp_code: str = Field(..., min_length=6, max_length=6)
+
+class GoogleSigninRequest(BaseModel):
+    google_id_token: str
+
+

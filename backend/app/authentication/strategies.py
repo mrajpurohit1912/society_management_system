@@ -11,6 +11,10 @@ from app.authentication.schemas import (
     EmailPasswordSignupRequest,
     MobileOTPSignupRequest,
     GoogleSignupRequest,
+    UsernameSigninRequest,
+    EmailPasswordSigninRequest,
+    MobileOTPSigninRequest,
+    GoogleSigninRequest,
 )
 from app.authentication.repository import UserRepository
 from app.core.cache import RedisService
@@ -47,6 +51,8 @@ class SignupStrategy(ABC, Generic[T]):
             UserModel: The newly registered user DB model.
         """
         pass
+
+
 
 
 class UsernamePasswordStrategy(SignupStrategy[UsernamePasswordSignupRequest]):
@@ -201,4 +207,126 @@ class GoogleStrategy(SignupStrategy[GoogleSignupRequest]):
             identifier=google_sub,
             password_hash=None
         )
+        return user
+
+
+class SigninStrategy(ABC, Generic[T]):
+    """
+    Abstract Base Class for all Authentication / Signin strategies.
+    Defines the contract for validating and authenticating users.
+    """
+    @abstractmethod
+    async def signin(self, db: AsyncSession, payload: T) -> UserModel:
+        """
+        Execute validation and database updates for a specific signin provider.
+        
+        Args:
+            db (AsyncSession): Scoped database session.
+            payload (T): Pydantic validation request payload.
+            
+        Returns:
+            UserModel: The authenticated user DB model.
+        """
+        pass
+
+
+class UsernameSigninStrategy(SigninStrategy[UsernameSigninRequest]):
+    """
+    Strategy for local authentication using a Username and Password.
+    """
+    async def signin(self, db: AsyncSession, payload: UsernameSigninRequest) -> UserModel:
+        repo = UserRepository(db)
+        
+        result = await repo.get_user_by_credential(provider="username", identifier=payload.username)
+        if not result:
+            raise ValueError("Invalid username or password")
+            
+        user, credential = result
+        if not credential.password_hash:
+            raise ValueError("Invalid username or password")
+
+        is_valid = bcrypt.checkpw(
+            payload.password.encode("utf-8"),
+            credential.password_hash.encode("utf-8")
+        )
+        if not is_valid:
+            raise ValueError("Invalid username or password")
+            
+        return user
+
+
+class EmailPasswordSigninStrategy(SigninStrategy[EmailPasswordSigninRequest]):
+    """
+    Strategy for local authentication using an Email and Password.
+    """
+    async def signin(self, db: AsyncSession, payload: EmailPasswordSigninRequest) -> UserModel:
+        repo = UserRepository(db)
+        
+        result = await repo.get_user_by_credential(provider="email", identifier=payload.email)
+        if not result:
+            raise ValueError("Invalid email or password")
+            
+        user, credential = result
+        if not credential.password_hash:
+            raise ValueError("Invalid email or password")
+
+        is_valid = bcrypt.checkpw(
+            payload.password.encode("utf-8"),
+            credential.password_hash.encode("utf-8")
+        )
+        if not is_valid:
+            raise ValueError("Invalid email or password")
+            
+        return user
+
+
+class MobileOTPSigninStrategy(SigninStrategy[MobileOTPSigninRequest]):
+    """
+    Strategy for authentication using a Mobile Number and SMS OTP.
+    """
+    def __init__(self, cache_service: RedisService):
+        self.cache = cache_service
+
+    async def signin(self, db: AsyncSession, payload: MobileOTPSigninRequest) -> UserModel:
+        is_valid = await self.cache.verify_otp(
+            phone=payload.phone_number,
+            otp_code=payload.otp_code
+        )
+        if not is_valid:
+            raise ValueError("Invalid or expired OTP code")
+
+        repo = UserRepository(db)
+        result = await repo.get_user_by_credential(provider="phone", identifier=payload.phone_number)
+        if not result:
+            raise ValueError("Phone number is not registered")
+            
+        user, _ = result
+        await self.cache.invalidate_otp(payload.phone_number)
+        return user
+
+
+class GoogleSigninStrategy(SigninStrategy[GoogleSigninRequest]):
+    """
+    Strategy for authentication/login using Google Social Auth.
+    """
+    def __init__(self, google_client_id: str):
+        self.client_id = google_client_id
+
+    async def signin(self, db: AsyncSession, payload: GoogleSigninRequest) -> UserModel:
+        try:
+            id_info = id_token.verify_oauth2_token(
+                payload.google_id_token,
+                requests.Request(),
+                self.client_id
+            )
+        except Exception:
+            raise ValueError("Invalid Google OAuth token")
+
+        google_sub = id_info["sub"]
+        repo = UserRepository(db)
+        result = await repo.get_user_by_credential(provider="google", identifier=google_sub)
+        if not result:
+            raise ValueError("Google account is not registered. Please sign up first.")
+            
+        user, _ = result
         return user
