@@ -5,9 +5,49 @@ build/
 dist/
 wheels/
 *.egg-info
+.python-version
 
-# Virtual environments
+# Virtual environments & Package managers
 .venv
-.env
 .venv/
+.uv/
+.uv_cache/
+.uv_python/
+.python-version
+
+# Secrets and environment variables
+.env
+*.env
+.env.*
+!.env.example
+
+# Pytest and Test Coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.nosetests
+.hypothesis/
+
+# Application Logs
+*.log
+logs/
+
+# IDE configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# Project-specific planning / notes
 todo.md
