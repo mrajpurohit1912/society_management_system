@@ -12,12 +12,14 @@ from app.authentication.schemas import (
     EmailPasswordSigninRequest,
     MobileOTPSigninRequest,
     GoogleSigninRequest,
+    AdminSignupRequest,
 )
 from app.authentication.strategies import (
     UsernamePasswordStrategy,
     EmailPasswordStrategy,
     MobileOTPStrategy,
     GoogleStrategy,
+    AdminSignupStrategy,
     UsernameSigninStrategy,
     EmailPasswordSigninStrategy,
     MobileOTPSigninStrategy,
@@ -43,11 +45,12 @@ def test_auth_orchestrator_initialization(mock_redis_service, google_client_id):
     """
     orchestrator = AuthOrchestratorService(mock_redis_service, google_client_id)
     
-    assert len(orchestrator._strategies) == 4
+    assert len(orchestrator._strategies) == 5
     assert isinstance(orchestrator._strategies[UsernamePasswordSignupRequest], UsernamePasswordStrategy)
     assert isinstance(orchestrator._strategies[EmailPasswordSignupRequest], EmailPasswordStrategy)
     assert isinstance(orchestrator._strategies[MobileOTPSignupRequest], MobileOTPStrategy)
     assert isinstance(orchestrator._strategies[GoogleSignupRequest], GoogleStrategy)
+    assert isinstance(orchestrator._strategies[AdminSignupRequest], AdminSignupStrategy)
 
 
 @pytest.mark.asyncio

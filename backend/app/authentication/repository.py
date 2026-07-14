@@ -59,13 +59,15 @@ class UserRepository:
         last_name: str,
         provider: str,
         identifier: str,
-        password_hash: Optional[str] = None
+        password_hash: Optional[str] = None,
+        role: str = "member"
     ) -> UserModel:
         """Atomically create user and credential record inside the transaction."""
         # 1. Create Core User
         user = UserModel(
             first_name=first_name,
-            last_name=last_name
+            last_name=last_name,
+            role=role
         )
         self.db.add(user)
         await self.db.flush()

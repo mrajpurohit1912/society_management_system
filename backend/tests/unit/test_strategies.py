@@ -7,6 +7,7 @@ from app.authentication.strategies import (
     EmailPasswordStrategy,
     MobileOTPStrategy,
     GoogleStrategy,
+    AdminSignupStrategy,
     UsernameSigninStrategy,
     EmailPasswordSigninStrategy,
     MobileOTPSigninStrategy,
@@ -22,6 +23,7 @@ from app.authentication.schemas import (
     EmailPasswordSigninRequest,
     MobileOTPSigninRequest,
     GoogleSigninRequest,
+    AdminSignupRequest,
 )
 
 
@@ -276,6 +278,79 @@ async def test_google_signup_invalid_token(mock_verify_oauth, mock_db):
         await strategy.signup(mock_db, payload)
         
     assert "Invalid Google OAuth token" in str(exc_info.value)
+
+
+# ==============================================================================
+# 4.5. AdminSignupStrategy Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+@patch("app.authentication.strategies.UserRepository")
+async def test_admin_signup_success(mock_user_repo_cls, mock_db, user_mock):
+    mock_repo_inst = AsyncMock()
+    mock_user_repo_cls.return_value = mock_repo_inst
+    
+    mock_repo_inst.get_credential_by_identifier.return_value = None
+    mock_repo_inst.create_user_with_credentials.return_value = user_mock
+    
+    strategy = AdminSignupStrategy(admin_secret="super-secret-key")
+    payload = AdminSignupRequest(
+        first_name="AdminFirst",
+        last_name="AdminLast",
+        email="admin@example.com",
+        password="password123",
+        admin_secret="super-secret-key"
+    )
+    
+    result = await strategy.signup(mock_db, payload)
+    
+    mock_repo_inst.get_credential_by_identifier.assert_called_once_with(
+        provider="email", identifier="admin@example.com"
+    )
+    mock_repo_inst.create_user_with_credentials.assert_called_once()
+    # Check that it passed role="admin"
+    args, kwargs = mock_repo_inst.create_user_with_credentials.call_args
+    assert kwargs.get("role") == "admin"
+    assert result == user_mock
+
+
+@pytest.mark.asyncio
+async def test_admin_signup_invalid_secret(mock_db):
+    strategy = AdminSignupStrategy(admin_secret="super-secret-key")
+    payload = AdminSignupRequest(
+        first_name="AdminFirst",
+        last_name="AdminLast",
+        email="admin@example.com",
+        password="password123",
+        admin_secret="wrong-secret-key"
+    )
+    
+    with pytest.raises(ValueError) as exc_info:
+        await strategy.signup(mock_db, payload)
+        
+    assert "Invalid administrator registration secret" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@patch("app.authentication.strategies.UserRepository")
+async def test_admin_signup_email_taken(mock_user_repo_cls, mock_db, credential_mock):
+    mock_repo_inst = AsyncMock()
+    mock_user_repo_cls.return_value = mock_repo_inst
+    mock_repo_inst.get_credential_by_identifier.return_value = credential_mock
+    
+    strategy = AdminSignupStrategy(admin_secret="super-secret-key")
+    payload = AdminSignupRequest(
+        first_name="AdminFirst",
+        last_name="AdminLast",
+        email="admin@example.com",
+        password="password123",
+        admin_secret="super-secret-key"
+    )
+    
+    with pytest.raises(ValueError) as exc_info:
+        await strategy.signup(mock_db, payload)
+        
+    assert "Email is already registered" in str(exc_info.value)
 
 
 # ==============================================================================

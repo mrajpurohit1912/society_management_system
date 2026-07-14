@@ -19,12 +19,13 @@ class TokenService:
     """
 
     @staticmethod
-    def create_access_token(user_id: str) -> str:
+    def create_access_token(user_id: str, role: str) -> str:
         """
         Generate a short-lived JSON Web Token for user API authorization.
         
         Args:
             user_id (str): The unique ID of the authenticated user.
+            role (str): The role of the authenticated user (e.g., admin, member).
             
         Returns:
             str: Signed JWT access token string.
@@ -32,6 +33,7 @@ class TokenService:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
             "sub": user_id,
+            "role": role,
             "exp": expire,
             "type": "access"
         }

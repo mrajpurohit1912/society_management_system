@@ -1,3 +1,4 @@
+import enum
 from datetime import datetime
 import uuid
 from typing import List, Optional
@@ -5,6 +6,10 @@ from sqlalchemy import String, DateTime, ForeignKey, func, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
+
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    MEMBER = "member"
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -14,6 +19,7 @@ class UserModel(Base):
     )
     first_name: Mapped[str] = mapped_column(String(50), nullable=False)
     last_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default=UserRole.MEMBER.value, server_default=UserRole.MEMBER.value, nullable=False)
     
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

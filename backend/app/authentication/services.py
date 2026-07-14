@@ -10,6 +10,7 @@ from app.authentication.strategies import (
     EmailPasswordStrategy,
     MobileOTPStrategy,
     GoogleStrategy,
+    AdminSignupStrategy,
     SigninStrategy,
     UsernameSigninStrategy,
     EmailPasswordSigninStrategy,
@@ -25,8 +26,10 @@ from app.authentication.schemas import (
     EmailPasswordSigninRequest,
     MobileOTPSigninRequest,
     GoogleSigninRequest,
+    AdminSignupRequest,
 )
 from app.core.cache import RedisService
+from app.core.config import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -51,6 +54,7 @@ class AuthOrchestratorService:
         self.register(EmailPasswordSignupRequest, EmailPasswordStrategy())
         self.register(MobileOTPSignupRequest, MobileOTPStrategy(redis_service))
         self.register(GoogleSignupRequest, GoogleStrategy(google_client_id))
+        self.register(AdminSignupRequest, AdminSignupStrategy(settings.ADMIN_REGISTRATION_SECRET))
 
     def register(self, payload_type: Type[BaseModel], strategy: SignupStrategy) -> None:
         """

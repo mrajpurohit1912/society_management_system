@@ -4,6 +4,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str  # Required (will raise an validation error if missing)                                                                                       
     REDIS_URL: str                                                                                      
     JWT_SECRET_KEY: str
+    ADMIN_REGISTRATION_SECRET: str = "super-secret-admin-key-change-me"
     ENV: str = "production"
     LOG_LEVEL: str = "INFO"
 

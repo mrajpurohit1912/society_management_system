@@ -30,12 +30,13 @@ def test_create_access_token_success(mock_utc_now):
         # Keep timezone reference working
         mock_datetime.timezone = timezone
         
-        token = TokenService.create_access_token(user_id)
+        token = TokenService.create_access_token(user_id, "member")
 
     # Decode token using PyJWT directly to inspect raw claims (ignoring exp check for mock timing)
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
 
     assert payload["sub"] == user_id
+    assert payload["role"] == "member"
     assert payload["type"] == "access"
     
     # Expiration assertion: 12:00:00 + 15 minutes = 12:15:00
@@ -82,7 +83,7 @@ def test_verify_token_success():
     Test that verification decodes claims successfully for a valid, unexpired token.
     """
     user_id = "user_9999"
-    token = TokenService.create_access_token(user_id)
+    token = TokenService.create_access_token(user_id, "member")
 
     decoded_payload = TokenService.verify_token(token)
 
@@ -102,7 +103,7 @@ def test_verify_token_expired(mock_utc_now):
     with patch("app.authentication.security.datetime") as mock_datetime:
         mock_datetime.now.return_value = past_time
         mock_datetime.timezone = timezone
-        token = TokenService.create_access_token(user_id)
+        token = TokenService.create_access_token(user_id, "member")
 
     # Verification must raise ExpiredSignatureError
     with pytest.raises(jwt.ExpiredSignatureError):

@@ -15,6 +15,7 @@ from app.authentication.schemas import (
     EmailPasswordSigninRequest,
     MobileOTPSigninRequest,
     GoogleSigninRequest,
+    AdminSignupRequest,
 )
 from app.authentication.services import AuthOrchestratorService, LoginOrchestratorService
 from app.authentication.security import TokenService
@@ -73,7 +74,7 @@ async def _handle_signup_and_issue_tokens(
             )
 
         # Generate access token
-        access_token = TokenService.create_access_token(user_id_str)
+        access_token = TokenService.create_access_token(user_id_str, user.role)
 
         # Set secure HttpOnly cookie for refresh token (XSS & CSRF mitigation)
         response.set_cookie(
@@ -127,7 +128,7 @@ async def _handle_login_and_issue_tokens(
             )
 
         # Generate access token
-        access_token = TokenService.create_access_token(user_id_str)
+        access_token = TokenService.create_access_token(user_id_str, user.role)
 
         # Set secure HttpOnly cookie for refresh token (XSS & CSRF mitigation)
         response.set_cookie(
@@ -201,6 +202,20 @@ async def signup_google(
     Register or log in a user using their Google OAuth ID token.
     """
     return await _handle_signup_and_issue_tokens(payload, response, db, auth_service)
+
+
+@router.post("/signup/admin", status_code=status.HTTP_201_CREATED)
+async def signup_admin(
+    payload: AdminSignupRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db_session),
+    auth_service: AuthOrchestratorService = Depends(get_orchestrator)
+):
+    """
+    Register an administrative user using an Email, Password, and the Admin Setup Secret.
+    """
+    return await _handle_signup_and_issue_tokens(payload, response, db, auth_service)
+
 
 
 @router.post("/login/username")

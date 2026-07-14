@@ -22,6 +22,7 @@ class UserDomain(BaseModel):
     user_id: uuid.UUID
     first_name: str = Field(..., max_length=50)
     last_name: str = Field(..., max_length=50)
+    role: str
     created_at: datetime
     updated_at: datetime
     credentials: List[AuthCredentialDomain] = []
@@ -50,6 +51,12 @@ class MobileOTPSignupRequest(BaseSignupRequest):
 
 class GoogleSignupRequest(BaseModel):
     google_id_token: str
+
+class AdminSignupRequest(BaseSignupRequest):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    admin_secret: str
+
 
 
 # Schema for LoginRequest
