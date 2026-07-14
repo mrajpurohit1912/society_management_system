@@ -10,6 +10,10 @@ jobs:
   test:
     name: Run Backend Test Suite
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite+aiosqlite:///:memory:
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET_KEY: test_secret_key_12345_for_ci_pipeline_verification
     
     defaults:
       run:

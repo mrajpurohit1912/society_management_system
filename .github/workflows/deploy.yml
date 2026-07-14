@@ -44,4 +44,12 @@ jobs:
 
       - name: Trigger Render Deploy
         run: |
-          curl -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          response=$(curl -s -w "%{http_code}" -o /dev/null -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}")
+          if [ "$response" -eq 200 ] || [ "$response" -eq 204 ] || [ "$response" -eq 201 ] || [ "$response" -eq 302 ]; then
+            echo "Deployment triggered successfully (status $response)."
+          elif [ "$response" -eq 409 ]; then
+            echo "Warning: A deployment is already in progress on Render (status 409). Ignoring conflict."
+          else
+            echo "Error: Deployment failed with status code $response."
+            exit 1
+          fi
