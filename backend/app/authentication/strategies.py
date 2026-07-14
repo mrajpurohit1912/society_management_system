@@ -4,6 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from google.oauth2 import id_token
 from google.auth.transport import requests
 import bcrypt
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 from app.authentication.models import UserModel
 from app.authentication.schemas import (
@@ -63,11 +66,13 @@ class UsernamePasswordStrategy(SignupStrategy[UsernamePasswordSignupRequest]):
         repo = UserRepository(db)
 
         # 1. Business Check: Is the username already taken?
+        logger.info("strategy.username_signup_attempt", username=payload.username)
         existing_credential = await repo.get_credential_by_identifier(
             provider="username",
             identifier=payload.username
         )
         if existing_credential:
+            logger.warning("strategy.username_signup_taken", username=payload.username)
             raise ValueError("Username is already taken")
 
         # 2. Security: Hash the raw password
@@ -92,11 +97,13 @@ class EmailPasswordStrategy(SignupStrategy[EmailPasswordSignupRequest]):
         repo = UserRepository(db)
 
         # 1. Check if email is already in use
+        logger.info("strategy.email_signup_attempt", email=payload.email)
         existing_credential = await repo.get_credential_by_identifier(
             provider="email",
             identifier=payload.email
         )
         if existing_credential:
+            logger.warning("strategy.email_signup_taken", email=payload.email)
             raise ValueError("Email is already registered")
 
         # 2. Hash password
@@ -129,6 +136,7 @@ class MobileOTPStrategy(SignupStrategy[MobileOTPSignupRequest]):
 
     async def signup(self, db: AsyncSession, payload: MobileOTPSignupRequest) -> UserModel:
         repo = UserRepository(db)
+        logger.info("strategy.otp_signup_attempt", phone=payload.phone_number)
 
         # 1. Security check: Verify OTP matches value in Redis
         is_valid = await self.cache.verify_otp(
@@ -136,6 +144,7 @@ class MobileOTPStrategy(SignupStrategy[MobileOTPSignupRequest]):
             otp_code=payload.otp_code
         )
         if not is_valid:
+            logger.warning("strategy.otp_signup_invalid_otp", phone=payload.phone_number)
             raise ValueError("Invalid or expired OTP code")
 
         # 2. Check if phone number is already registered in DB
@@ -144,6 +153,7 @@ class MobileOTPStrategy(SignupStrategy[MobileOTPSignupRequest]):
             identifier=payload.phone_number
         )
         if existing_credential:
+            logger.warning("strategy.otp_signup_phone_taken", phone=payload.phone_number)
             raise ValueError("Phone number is already registered")
 
         # 3. Save user profile & link phone credential (no password)
@@ -173,6 +183,7 @@ class GoogleStrategy(SignupStrategy[GoogleSignupRequest]):
 
     async def signup(self, db: AsyncSession, payload: GoogleSignupRequest) -> UserModel:
         repo = UserRepository(db)
+        logger.info("strategy.google_signup_attempt")
 
         # 1. Cryptographically verify the Google ID token
         try:
@@ -181,7 +192,8 @@ class GoogleStrategy(SignupStrategy[GoogleSignupRequest]):
                 requests.Request(),
                 self.client_id
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("strategy.google_signup_invalid_token", error=str(e))
             raise ValueError("Invalid Google OAuth token")
 
         # 2. Extract user details from Google token claims
@@ -197,6 +209,7 @@ class GoogleStrategy(SignupStrategy[GoogleSignupRequest]):
         )
         if existing_credential:
             # User is already signed up with Google. Return existing user.
+            logger.info("strategy.google_signup_existing_user", user_id=str(existing_credential.user_id))
             return await repo.get_user_by_id(existing_credential.user_id)
 
         # 4. Save new user linked to Google credential
@@ -236,13 +249,16 @@ class UsernameSigninStrategy(SigninStrategy[UsernameSigninRequest]):
     """
     async def signin(self, db: AsyncSession, payload: UsernameSigninRequest) -> UserModel:
         repo = UserRepository(db)
+        logger.info("strategy.username_signin_attempt", username=payload.username)
         
         result = await repo.get_user_by_credential(provider="username", identifier=payload.username)
         if not result:
+            logger.warning("strategy.username_signin_failed_missing_user", username=payload.username)
             raise ValueError("Invalid username or password")
             
         user, credential = result
         if not credential.password_hash:
+            logger.warning("strategy.username_signin_failed_missing_hash", username=payload.username)
             raise ValueError("Invalid username or password")
 
         is_valid = bcrypt.checkpw(
@@ -250,6 +266,7 @@ class UsernameSigninStrategy(SigninStrategy[UsernameSigninRequest]):
             credential.password_hash.encode("utf-8")
         )
         if not is_valid:
+            logger.warning("strategy.username_signin_failed_bad_password", username=payload.username)
             raise ValueError("Invalid username or password")
             
         return user
@@ -261,13 +278,16 @@ class EmailPasswordSigninStrategy(SigninStrategy[EmailPasswordSigninRequest]):
     """
     async def signin(self, db: AsyncSession, payload: EmailPasswordSigninRequest) -> UserModel:
         repo = UserRepository(db)
+        logger.info("strategy.email_signin_attempt", email=payload.email)
         
         result = await repo.get_user_by_credential(provider="email", identifier=payload.email)
         if not result:
+            logger.warning("strategy.email_signin_failed_missing_user", email=payload.email)
             raise ValueError("Invalid email or password")
             
         user, credential = result
         if not credential.password_hash:
+            logger.warning("strategy.email_signin_failed_missing_hash", email=payload.email)
             raise ValueError("Invalid email or password")
 
         is_valid = bcrypt.checkpw(
@@ -275,6 +295,7 @@ class EmailPasswordSigninStrategy(SigninStrategy[EmailPasswordSigninRequest]):
             credential.password_hash.encode("utf-8")
         )
         if not is_valid:
+            logger.warning("strategy.email_signin_failed_bad_password", email=payload.email)
             raise ValueError("Invalid email or password")
             
         return user
@@ -288,16 +309,19 @@ class MobileOTPSigninStrategy(SigninStrategy[MobileOTPSigninRequest]):
         self.cache = cache_service
 
     async def signin(self, db: AsyncSession, payload: MobileOTPSigninRequest) -> UserModel:
+        logger.info("strategy.otp_signin_attempt", phone=payload.phone_number)
         is_valid = await self.cache.verify_otp(
             phone=payload.phone_number,
             otp_code=payload.otp_code
         )
         if not is_valid:
+            logger.warning("strategy.otp_signin_invalid_otp", phone=payload.phone_number)
             raise ValueError("Invalid or expired OTP code")
 
         repo = UserRepository(db)
         result = await repo.get_user_by_credential(provider="phone", identifier=payload.phone_number)
         if not result:
+            logger.warning("strategy.otp_signin_phone_not_found", phone=payload.phone_number)
             raise ValueError("Phone number is not registered")
             
         user, _ = result
@@ -313,19 +337,22 @@ class GoogleSigninStrategy(SigninStrategy[GoogleSigninRequest]):
         self.client_id = google_client_id
 
     async def signin(self, db: AsyncSession, payload: GoogleSigninRequest) -> UserModel:
+        logger.info("strategy.google_signin_attempt")
         try:
             id_info = id_token.verify_oauth2_token(
                 payload.google_id_token,
                 requests.Request(),
                 self.client_id
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("strategy.google_signin_invalid_token", error=str(e))
             raise ValueError("Invalid Google OAuth token")
 
         google_sub = id_info["sub"]
         repo = UserRepository(db)
         result = await repo.get_user_by_credential(provider="google", identifier=google_sub)
         if not result:
+            logger.warning("strategy.google_signin_not_found", google_sub=google_sub)
             raise ValueError("Google account is not registered. Please sign up first.")
             
         user, _ = result

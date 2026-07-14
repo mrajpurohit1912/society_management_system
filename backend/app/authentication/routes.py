@@ -1,9 +1,11 @@
 import os
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
 from app.core.cache import RedisService
+from app.core.logging_context import set_logging_context
 from app.authentication.schemas import (
     UsernamePasswordSignupRequest,
     EmailPasswordSignupRequest,
@@ -19,6 +21,7 @@ from app.authentication.security import TokenService
 from app.authentication.repository import UserRepository
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = structlog.get_logger(__name__)
 
 # Core Services Instantiation
 redis_service = RedisService()
@@ -48,14 +51,18 @@ async def _handle_signup_and_issue_tokens(
     Common helper executing the registration strategy inside an atomic database 
     transaction and configuring session cookies outside it.
     """
+    strategy_name = type(payload).__name__
+    logger.info("auth.signup_started", strategy=strategy_name)
     try:
         # Atomic Transaction Block
         # If any db query or logic inside fails, SQLAlchemy rolls back automatically
         async with db.begin():
             user = await auth_service.execute_signup(db, payload)
+            user_id_str = str(user.user_id)
+            set_logging_context(user_id=user_id_str)
             
             # Generate refresh token details
-            raw_refresh, refresh_hash, expires_at = TokenService.create_refresh_token(str(user.user_id))
+            raw_refresh, refresh_hash, expires_at = TokenService.create_refresh_token(user_id_str)
             
             # Save refresh token hash in DB
             repo = UserRepository(db)
@@ -66,7 +73,7 @@ async def _handle_signup_and_issue_tokens(
             )
 
         # Generate access token
-        access_token = TokenService.create_access_token(str(user.user_id))
+        access_token = TokenService.create_access_token(user_id_str)
 
         # Set secure HttpOnly cookie for refresh token (XSS & CSRF mitigation)
         response.set_cookie(
@@ -78,9 +85,11 @@ async def _handle_signup_and_issue_tokens(
             expires=expires_at
         )
 
+        logger.info("auth.signup_success", strategy=strategy_name, user_id=user_id_str)
         return {"access_token": access_token, "token_type": "bearer"}
         
     except ValueError as e:
+        logger.warning("auth.signup_failed", strategy=strategy_name, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -97,13 +106,17 @@ async def _handle_login_and_issue_tokens(
     Common helper executing the login strategy inside an atomic database 
     transaction and configuring session cookies outside it.
     """
+    strategy_name = type(payload).__name__
+    logger.info("auth.login_started", strategy=strategy_name)
     try:
         # Atomic Transaction Block
         async with db.begin():
             user = await login_service.execute_signin(db, payload)
+            user_id_str = str(user.user_id)
+            set_logging_context(user_id=user_id_str)
             
             # Generate refresh token details
-            raw_refresh, refresh_hash, expires_at = TokenService.create_refresh_token(str(user.user_id))
+            raw_refresh, refresh_hash, expires_at = TokenService.create_refresh_token(user_id_str)
             
             # Save refresh token hash in DB
             repo = UserRepository(db)
@@ -114,7 +127,7 @@ async def _handle_login_and_issue_tokens(
             )
 
         # Generate access token
-        access_token = TokenService.create_access_token(str(user.user_id))
+        access_token = TokenService.create_access_token(user_id_str)
 
         # Set secure HttpOnly cookie for refresh token (XSS & CSRF mitigation)
         response.set_cookie(
@@ -126,9 +139,11 @@ async def _handle_login_and_issue_tokens(
             expires=expires_at
         )
 
+        logger.info("auth.login_success", strategy=strategy_name, user_id=user_id_str)
         return {"access_token": access_token, "token_type": "bearer"}
         
     except ValueError as e:
+        logger.warning("auth.login_failed", strategy=strategy_name, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)

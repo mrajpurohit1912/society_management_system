@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Type
+import structlog
 
 from app.authentication.models import UserModel
 from app.authentication.strategies import (
@@ -26,6 +27,8 @@ from app.authentication.schemas import (
     GoogleSigninRequest,
 )
 from app.core.cache import RedisService
+
+logger = structlog.get_logger(__name__)
 
 class AuthOrchestratorService:
     """
@@ -71,9 +74,11 @@ class AuthOrchestratorService:
         """
         strategy = self._strategies.get(type(payload))
         if not strategy:
+            logger.error("auth.signup_strategy_not_found", payload_type=type(payload).__name__)
             raise ValueError(
                 f"No authentication strategy configured for request payload of type {type(payload).__name__}"
             )
+        logger.debug("auth.signup_strategy_selected", strategy=type(strategy).__name__)
         return await strategy.signup(db, payload)
 
 
@@ -107,8 +112,10 @@ class LoginOrchestratorService:
         """
         strategy = self._strategies.get(type(payload))
         if not strategy:
+            logger.error("auth.signin_strategy_not_found", payload_type=type(payload).__name__)
             raise ValueError(
                 f"No signin strategy configured for request payload of type {type(payload).__name__}"
             )
+        logger.debug("auth.signin_strategy_selected", strategy=type(strategy).__name__)
         return await strategy.signin(db, payload)
 
