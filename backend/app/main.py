@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.logging_config import setup_logging
 from app.core.logging_context import set_logging_context, clear_logging_context
 from app.authentication.routes import router as auth_router
+from app.societies.routes import router as societies_router
 
 # Initialize structured logging
 setup_logging(env=settings.ENV, log_level=settings.LOG_LEVEL)
@@ -85,7 +86,9 @@ app.add_middleware(
 
 # Register Feature Slices Routers
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(societies_router, prefix="/api/v1")
 
 @app.get("/")
 def read_root():
     return {"message": "Society Management System Backend is running."}
+

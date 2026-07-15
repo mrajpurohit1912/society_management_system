@@ -57,6 +57,7 @@ def mock_user():
     user.user_id = uuid.uuid4()
     user.first_name = "John"
     user.last_name = "Doe"
+    user.role = "member"
     return user
 
 
