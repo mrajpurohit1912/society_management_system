@@ -16,9 +16,12 @@ from app.societies.models import (
 )
 from app.societies.schemas import (
     SocietyCreate,
+    SocietyUpdate,
     BuildingCreate,
+    BuildingUpdate,
     FloorCreate,
     UnitCreate,
+    UnitUpdate,
     ResidentAssign,
     VehicleRegister,
     BulkProvisionRequest
@@ -50,6 +53,14 @@ class SocietyService:
     async def list_societies(self) -> List[SocietyModel]:
         return await self.repo.list_societies()
 
+    async def update_society(self, society_id: uuid.UUID, data: SocietyUpdate) -> SocietyModel:
+        society = await self.get_society(society_id)
+        update_data = data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(society, key, value)
+        return society
+
+
 
 class BuildingService:
     def __init__(self, db: AsyncSession):
@@ -76,6 +87,19 @@ class BuildingService:
 
     async def list_buildings(self, society_id: uuid.UUID) -> List[BuildingModel]:
         return await self.repo.list_buildings(society_id)
+
+    async def update_building(self, society_id: uuid.UUID, building_id: uuid.UUID, data: BuildingUpdate) -> BuildingModel:
+        building = await self.get_building(building_id)
+        if building.society_id != society_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Building does not belong to the specified society."
+            )
+        update_data = data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(building, key, value)
+        return building
+
 
 
 class FloorService:
@@ -144,6 +168,19 @@ class UnitService:
 
     async def list_units(self, floor_id: uuid.UUID) -> List[UnitModel]:
         return await self.repo.list_units(floor_id)
+
+    async def update_unit(self, floor_id: uuid.UUID, unit_id: uuid.UUID, data: UnitUpdate) -> UnitModel:
+        unit = await self.get_unit(unit_id)
+        if unit.floor_id != floor_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unit does not belong to the specified floor."
+            )
+        update_data = data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(unit, key, value)
+        return unit
+
 
 
 class ResidentService:
@@ -264,19 +301,20 @@ class BulkProvisionService:
             self.db.add(building)
             await self.db.flush()
             
-            # 2. Create Floors
-            for floor_no in range(1, b_data.number_of_floors + 1):
+            # 2. Create Floors (starting from 0 for Ground Floor)
+            for floor_no in range(0, b_data.number_of_floors + 1):
+                floor_name = "Ground Floor" if floor_no == 0 else f"Floor {floor_no}"
                 floor = FloorModel(
                     building_id=building.id,
                     floor_number=floor_no,
-                    floor_name=f"Floor {floor_no}"
+                    floor_name=floor_name
                 )
                 self.db.add(floor)
                 await self.db.flush()
                 
                 # 3. Create Units for this Floor
                 for unit_idx in range(1, b_data.units_per_floor + 1):
-                    # Format: Floor Number + 2 digit Unit index (e.g. 101, 102, 1001)
+                    # Format: Floor Number + 2 digit Unit index (e.g. 001, 101, 201)
                     unit_number = f"{floor_no}{unit_idx:02d}"
                     unit = UnitModel(
                         floor_id=floor.id,

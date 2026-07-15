@@ -3,17 +3,21 @@ from typing import List
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contextlib import asynccontextmanager
 from app.core.database import get_db_session
 from app.authentication.dependencies import get_current_user, require_platform_admin, require_society_admin
 from app.authentication.models import UserModel
 from app.societies.schemas import (
     SocietyCreate,
+    SocietyUpdate,
     SocietyResponse,
     BuildingCreate,
+    BuildingUpdate,
     BuildingResponse,
     FloorCreate,
     FloorResponse,
     UnitCreate,
+    UnitUpdate,
     UnitResponse,
     ResidentAssign,
     ResidentResponse,
@@ -36,6 +40,23 @@ from app.societies.services import (
 router = APIRouter(prefix="/societies", tags=["Society Management"])
 
 
+@asynccontextmanager
+async def safe_transaction(db: AsyncSession):
+    """
+    Safely manage database transaction boundaries.
+    If a transaction was already started implicitly (e.g. by query executions 
+    in dependencies), this context manager will yield and commit on success.
+    Otherwise, it opens a new transaction context.
+    """
+    if db.in_transaction():
+        yield
+        await db.commit()
+    else:
+        async with db.begin():
+            yield
+
+
+
 # --- Society Endpoints ---
 
 @router.post("", response_model=SocietyResponse, status_code=status.HTTP_201_CREATED)
@@ -49,7 +70,7 @@ async def create_society(
     """
     service = SocietyService(db)
     # Perform inside transaction block
-    async with db.begin():
+    async with safe_transaction(db):
         return await service.create_society(payload)
 
 
@@ -78,6 +99,22 @@ async def get_society(
     return await service.get_society(society_id)
 
 
+@router.patch("/{society_id}", response_model=SocietyResponse)
+async def update_society(
+    society_id: uuid.UUID,
+    payload: SocietyUpdate,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_platform_admin)
+):
+    """
+    Update a society's details. Restricted to Platform/Super Admins.
+    """
+    service = SocietyService(db)
+    async with safe_transaction(db):
+        return await service.update_society(society_id, payload)
+
+
+
 # --- Scoped RBAC Endpoints ---
 
 @router.post("/{society_id}/assign-role", response_model=UserSocietyRoleResponse, status_code=status.HTTP_200_OK)
@@ -92,7 +129,7 @@ async def assign_user_society_role(
     Restricted to Society Admins.
     """
     service = SocietyService(db)
-    async with db.begin():
+    async with safe_transaction(db):
         user_role = await service.repo.assign_user_society_role(
             society_id=society_id,
             user_id=payload.user_id,
@@ -114,7 +151,7 @@ async def create_building(
     Create a new building/wing inside a society. Restricted to Society Admins.
     """
     service = BuildingService(db)
-    async with db.begin():
+    async with safe_transaction(db):
         return await service.create_building(society_id, payload)
 
 
@@ -129,6 +166,24 @@ async def list_buildings(
     """
     service = BuildingService(db)
     return await service.list_buildings(society_id)
+
+
+@router.patch("/{society_id}/buildings/{building_id}", response_model=BuildingResponse)
+async def update_building(
+    society_id: uuid.UUID,
+    building_id: uuid.UUID,
+    payload: BuildingUpdate,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin)
+):
+    """
+    Update a building's details (such as address, phone, email, status).
+    Restricted to Society Admins.
+    """
+    service = BuildingService(db)
+    async with safe_transaction(db):
+        return await service.update_building(society_id, building_id, payload)
+
 
 
 # --- Floor Endpoints ---
@@ -154,7 +209,7 @@ async def create_floor(
         )
 
     service = FloorService(db)
-    async with db.begin():
+    async with safe_transaction(db):
         return await service.create_floor(building_id, payload)
 
 
@@ -212,7 +267,7 @@ async def create_unit(
         )
 
     service = UnitService(db)
-    async with db.begin():
+    async with safe_transaction(db):
         return await service.create_unit(floor_id, payload)
 
 
@@ -247,6 +302,43 @@ async def list_units(
     return await service.list_units(floor_id)
 
 
+@router.patch("/{society_id}/buildings/{building_id}/floors/{floor_id}/units/{unit_id}", response_model=UnitResponse)
+async def update_unit(
+    society_id: uuid.UUID,
+    building_id: uuid.UUID,
+    floor_id: uuid.UUID,
+    unit_id: uuid.UUID,
+    payload: UnitUpdate,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin)
+):
+    """
+    Update a unit/flat's details (such as unit number, type, status).
+    Restricted to Society Admins.
+    """
+    # Validate hierarchy
+    f_service = FloorService(db)
+    floor = await f_service.get_floor(floor_id)
+    if floor.building_id != building_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Floor does not belong to the specified building."
+        )
+
+    b_service = BuildingService(db)
+    building = await b_service.get_building(building_id)
+    if building.society_id != society_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Building does not belong to the specified society."
+        )
+
+    service = UnitService(db)
+    async with safe_transaction(db):
+        return await service.update_unit(floor_id, unit_id, payload)
+
+
+
 # --- Resident Endpoints ---
 
 @router.post("/{society_id}/units/{unit_id}/residents", response_model=ResidentResponse, status_code=status.HTTP_201_CREATED)
@@ -274,7 +366,7 @@ async def assign_resident(
         )
 
     service = ResidentService(db)
-    async with db.begin():
+    async with safe_transaction(db):
         return await service.assign_resident(unit_id, payload)
 
 
@@ -331,7 +423,7 @@ async def register_vehicle(
         )
 
     service = VehicleService(db)
-    async with db.begin():
+    async with safe_transaction(db):
         return await service.register_vehicle(unit_id, payload)
 
 
@@ -375,5 +467,5 @@ async def provision_society_structure(
     Restricted to Society Admins.
     """
     service = BulkProvisionService(db)
-    async with db.begin():
+    async with safe_transaction(db):
         return await service.provision_society_structure(society_id, payload)

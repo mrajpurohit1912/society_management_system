@@ -60,6 +60,12 @@ class BuildingCreate(BaseModel):
 class BuildingUpdate(BaseModel):
     name: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    zipcode: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
     status: Optional[BuildingStatus] = None
 
 class BuildingResponse(BaseSchema):
