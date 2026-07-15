@@ -11,6 +11,7 @@ from app.core.database import Base
 from app.core.database import settings
 from app.authentication.models import UserModel, AuthCredentialModel, RefreshTokenModel
 from app.payments.models import PaymentModel
+from app.societies.models import SocietyModel, BuildingModel, FloorModel, UnitModel, UnitResidentModel, VehicleModel, UserSocietyRoleModel
 
 # 2. Bind the target metadata for autogenerate
 target_metadata = Base.metadata
