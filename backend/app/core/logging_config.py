@@ -1,7 +1,93 @@
 import logging
 import sys
 import structlog
+import queue
+import threading
+import time
+import requests
+from requests.auth import HTTPBasicAuth
 from app.core.logging_context import get_logging_context
+
+class LokiHandler(logging.Handler):
+    """
+    A custom, non-blocking log handler that pushes formatted log events to Grafana Loki
+    in a background thread to prevent blocking the main application event loop.
+    """
+    def __init__(self, url: str, username: str, token: str, labels: dict = None):
+        super().__init__()
+        # Normalize Loki endpoint
+        url = url.rstrip("/")
+        if not url.endswith("/loki/api/v1/push"):
+            url = f"{url}/loki/api/v1/push"
+        self.url = url
+        self.auth = HTTPBasicAuth(username, token)
+        self.labels = labels or {"application": "society-management-backend"}
+        self.queue = queue.Queue()
+        self.stop_event = threading.Event()
+        
+        # Daemon thread to batch and send logs in the background
+        self.worker = threading.Thread(target=self._post_loop, daemon=True)
+        self.worker.start()
+
+    def emit(self, record):
+        try:
+            log_entry = self.format(record)
+            # Loki requires timestamps in nanoseconds as strings
+            ns_timestamp = str(int(time.time() * 1e9))
+            self.queue.put((ns_timestamp, log_entry))
+        except Exception:
+            self.handleError(record)
+
+    def _post_loop(self):
+        while not self.stop_event.is_set():
+            batch = []
+            try:
+                # Wait for at least one log, timeout periodic to check stop_event
+                item = self.queue.get(timeout=1.0)
+                batch.append(item)
+                
+                # Batch up to 50 logs in one request
+                while len(batch) < 50:
+                    try:
+                        batch.append(self.queue.get_nowait())
+                    except queue.Empty:
+                        break
+            except queue.Empty:
+                continue
+
+            if batch:
+                self._send_batch(batch)
+
+    def _send_batch(self, batch):
+        payload = {
+            "streams": [
+                {
+                    "stream": self.labels,
+                    "values": batch
+                }
+            ]
+        }
+        headers = {"Content-Type": "application/json"}
+        try:
+            # Direct HTTP POST without routing back through python logging to prevent infinite loops
+            response = requests.post(
+                self.url,
+                json=payload,
+                headers=headers,
+                auth=self.auth,
+                timeout=5.0
+            )
+            if response.status_code >= 400:
+                sys.stderr.write(f"Loki push failed status={response.status_code}: {response.text}\n")
+        except Exception as e:
+            sys.stderr.write(f"Exception sending logs to Loki: {str(e)}\n")
+        finally:
+            for _ in batch:
+                self.queue.task_done()
+
+    def close(self):
+        self.stop_event.set()
+        super().close()
 
 def pii_masker_processor(logger, method_name, event_dict):
     """Masks sensitive data keys to prevent PII leakage in logs."""
@@ -68,6 +154,19 @@ def setup_logging(env: str = "production", log_level: str = "INFO"):
     for h in root_logger.handlers[:]:
         root_logger.removeHandler(h)
     root_logger.addHandler(handler)
+
+    # Add Loki Handler in production if configured
+    from app.core.config import settings
+    if settings.LOKI_URL and settings.LOKI_USER and settings.LOKI_TOKEN:
+        loki_handler = LokiHandler(
+            url=settings.LOKI_URL,
+            username=settings.LOKI_USER,
+            token=settings.LOKI_TOKEN,
+            labels={"application": "society-management-backend", "env": env}
+        )
+        loki_handler.setFormatter(formatter)
+        root_logger.addHandler(loki_handler)
+
     root_logger.setLevel(numeric_level)
 
     # Configure structlog to route through stdlib
