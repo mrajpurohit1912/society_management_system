@@ -12,9 +12,7 @@ class SocietyStatus(str, enum.Enum):
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
 
-class BuildingStatus(str, enum.Enum):
-    ACTIVE = "active"
-    INACTIVE = "inactive"
+
 
 class UnitType(str, enum.Enum):
     FLAT = "flat"
@@ -79,15 +77,6 @@ class BuildingModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     society_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("societies.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    state: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    country: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    zipcode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    
-    email: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default=BuildingStatus.ACTIVE.value, nullable=False)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

@@ -23,7 +23,7 @@ from app.societies.schemas import (
     BulkProvisionRequest,
     BuildingProvision
 )
-from app.societies.models import SocietyStatus, BuildingStatus, UnitType, UnitStatus, ResidencyType, ResidentStatus, VehicleType
+from app.societies.models import SocietyStatus, UnitType, UnitStatus, ResidencyType, ResidentStatus, VehicleType
 
 # --- Society Service Tests ---
 

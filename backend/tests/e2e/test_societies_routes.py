@@ -143,14 +143,6 @@ def test_create_building_success(mock_service_cls, test_client, mock_normal_user
     mock_building.id = uuid.uuid4()
     mock_building.society_id = uuid.uuid4()
     mock_building.name = "Tower A"
-    mock_building.address = None
-    mock_building.city = None
-    mock_building.state = None
-    mock_building.country = None
-    mock_building.zipcode = None
-    mock_building.email = None
-    mock_building.phone = None
-    mock_building.status = "active"
     mock_building.created_at = datetime.now()
     
     mock_service.create_building.return_value = mock_building
@@ -177,14 +169,6 @@ def test_bulk_provision_success(mock_service_cls, test_client):
     mock_building.id = uuid.uuid4()
     mock_building.society_id = uuid.uuid4()
     mock_building.name = "Tower A"
-    mock_building.address = None
-    mock_building.city = None
-    mock_building.state = None
-    mock_building.country = None
-    mock_building.zipcode = None
-    mock_building.email = None
-    mock_building.phone = None
-    mock_building.status = "active"
     mock_building.created_at = datetime.now()
     
     mock_service.provision_society_structure.return_value = [mock_building]
