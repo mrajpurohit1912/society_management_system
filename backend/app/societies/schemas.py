@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
-from app.societies.models import SocietyStatus, BuildingStatus, UnitType, UnitStatus, ResidencyType, ResidentStatus, VehicleType, SocietyRole
+from app.societies.models import SocietyStatus, UnitType, UnitStatus, ResidencyType, ResidentStatus, VehicleType, SocietyRole
 
 # --- User & Base Config ---
 class BaseSchema(BaseModel):
@@ -49,37 +49,14 @@ class SocietyResponse(BaseSchema):
 # --- Building Schemas ---
 class BuildingCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    country: Optional[str] = None
-    zipcode: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
 
 class BuildingUpdate(BaseModel):
     name: Optional[str] = None
-    address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    country: Optional[str] = None
-    zipcode: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    status: Optional[BuildingStatus] = None
 
 class BuildingResponse(BaseSchema):
     id: uuid.UUID
     society_id: uuid.UUID
     name: str
-    address: Optional[str]
-    city: Optional[str]
-    state: Optional[str]
-    country: Optional[str]
-    zipcode: Optional[str]
-    email: Optional[str]
-    phone: Optional[str]
-    status: str
     created_at: datetime
 
 # --- Floor Schemas ---

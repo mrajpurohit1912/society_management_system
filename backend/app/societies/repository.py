@@ -60,14 +60,7 @@ class SocietyRepository:
     async def create_building(self, society_id: uuid.UUID, data) -> BuildingModel:
         building = BuildingModel(
             society_id=society_id,
-            name=data.name,
-            address=data.address,
-            city=data.city,
-            state=data.state,
-            country=data.country,
-            zipcode=data.zipcode,
-            email=data.email,
-            phone=data.phone
+            name=data.name
         )
         self.db.add(building)
         await self.db.flush()
