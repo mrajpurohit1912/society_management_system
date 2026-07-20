@@ -89,8 +89,9 @@ def test_signup_username_success(mock_repo_cls, test_client, mock_auth_service, 
     # Assert
     assert response.status_code == 201
     data = response.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
+    assert data["success"] is True
+    assert "access_token" in data["data"]
+    assert data["data"]["token_type"] == "bearer"
     
     # Check that the HttpOnly refresh token cookie is set
     assert "refresh_token" in response.cookies
@@ -165,7 +166,7 @@ def test_signup_email_success(mock_repo_cls, test_client, mock_auth_service, moc
     response = test_client.post("/api/v1/auth/signup/email", json=payload)
     
     assert response.status_code == 201
-    assert "access_token" in response.json()
+    assert "access_token" in response.json()["data"]
     assert "refresh_token" in response.cookies
 
 
@@ -186,7 +187,7 @@ def test_signup_otp_success(mock_repo_cls, test_client, mock_auth_service, mock_
     response = test_client.post("/api/v1/auth/signup/otp", json=payload)
     
     assert response.status_code == 201
-    assert "access_token" in response.json()
+    assert "access_token" in response.json()["data"]
 
 
 @patch("app.authentication.routes.UserRepository")
@@ -203,7 +204,7 @@ def test_signup_google_success(mock_repo_cls, test_client, mock_auth_service, mo
     response = test_client.post("/api/v1/auth/signup/google", json=payload)
     
     assert response.status_code == 201
-    assert "access_token" in response.json()
+    assert "access_token" in response.json()["data"]
 
 
 # ==============================================================================
@@ -231,7 +232,8 @@ def test_login_username_success(mock_repo_cls, test_client, mock_login_service, 
     # Assert
     assert response.status_code == 200
     data = response.json()
-    assert "access_token" in data
+    assert data["success"] is True
+    assert "access_token" in data["data"]
     assert "refresh_token" in response.cookies
     mock_login_service.execute_signin.assert_called_once()
     mock_repo.add_refresh_token.assert_called_once()
@@ -276,7 +278,7 @@ def test_login_email_success(mock_repo_cls, test_client, mock_login_service, moc
     response = test_client.post("/api/v1/auth/login/email", json=payload)
     
     assert response.status_code == 200
-    assert "access_token" in response.json()
+    assert "access_token" in response.json()["data"]
 
 
 @patch("app.authentication.routes.UserRepository")
@@ -294,7 +296,7 @@ def test_login_otp_success(mock_repo_cls, test_client, mock_login_service, mock_
     response = test_client.post("/api/v1/auth/login/otp", json=payload)
     
     assert response.status_code == 200
-    assert "access_token" in response.json()
+    assert "access_token" in response.json()["data"]
 
 
 @patch("app.authentication.routes.UserRepository")
@@ -311,4 +313,4 @@ def test_login_google_success(mock_repo_cls, test_client, mock_login_service, mo
     response = test_client.post("/api/v1/auth/login/google", json=payload)
     
     assert response.status_code == 200
-    assert "access_token" in response.json()
+    assert "access_token" in response.json()["data"]

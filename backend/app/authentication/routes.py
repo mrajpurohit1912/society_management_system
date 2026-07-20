@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db_session
 from app.core.cache import RedisService
 from app.core.logging_context import set_logging_context
+from app.core.schemas import ApiResponse
 from app.authentication.schemas import (
     UsernamePasswordSignupRequest,
     EmailPasswordSignupRequest,
@@ -87,7 +88,11 @@ async def _handle_signup_and_issue_tokens(
         )
 
         logger.info("auth.signup_success", strategy=strategy_name, user_id=user_id_str)
-        return {"access_token": access_token, "token_type": "bearer"}
+        return {
+            "success": True,
+            "message": "Signup successful",
+            "data": {"access_token": access_token, "token_type": "bearer"}
+        }
         
     except ValueError as e:
         logger.warning("auth.signup_failed", strategy=strategy_name, error=str(e))
@@ -141,7 +146,11 @@ async def _handle_login_and_issue_tokens(
         )
 
         logger.info("auth.login_success", strategy=strategy_name, user_id=user_id_str)
-        return {"access_token": access_token, "token_type": "bearer"}
+        return {
+            "success": True,
+            "message": "Login successful",
+            "data": {"access_token": access_token, "token_type": "bearer"}
+        }
         
     except ValueError as e:
         logger.warning("auth.login_failed", strategy=strategy_name, error=str(e))

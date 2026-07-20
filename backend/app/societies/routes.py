@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from contextlib import asynccontextmanager
+from app.core.schemas import ApiResponse
 from app.core.database import get_db_session
 from app.authentication.dependencies import get_current_user, require_platform_admin, require_society_admin
 from app.authentication.models import UserModel
@@ -59,7 +60,7 @@ async def safe_transaction(db: AsyncSession):
 
 # --- Society Endpoints ---
 
-@router.post("", response_model=SocietyResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ApiResponse[SocietyResponse], status_code=status.HTTP_201_CREATED)
 async def create_society(
     payload: SocietyCreate,
     db: AsyncSession = Depends(get_db_session),
@@ -71,10 +72,11 @@ async def create_society(
     service = SocietyService(db)
     # Perform inside transaction block
     async with safe_transaction(db):
-        return await service.create_society(payload)
+        res = await service.create_society(payload)
+        return {"success": True, "message": "Society created successfully", "data": res}
 
 
-@router.get("", response_model=List[SocietyResponse])
+@router.get("", response_model=ApiResponse[List[SocietyResponse]])
 async def list_societies(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
@@ -83,10 +85,11 @@ async def list_societies(
     List all housing societies registered on the platform.
     """
     service = SocietyService(db)
-    return await service.list_societies()
+    res = await service.list_societies()
+    return {"success": True, "message": "Societies retrieved successfully", "data": res}
 
 
-@router.get("/{society_id}", response_model=SocietyResponse)
+@router.get("/{society_id}", response_model=ApiResponse[SocietyResponse])
 async def get_society(
     society_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
@@ -96,10 +99,11 @@ async def get_society(
     Get details of a specific housing society by its ID.
     """
     service = SocietyService(db)
-    return await service.get_society(society_id)
+    res = await service.get_society(society_id)
+    return {"success": True, "message": "Society details retrieved successfully", "data": res}
 
 
-@router.patch("/{society_id}", response_model=SocietyResponse)
+@router.patch("/{society_id}", response_model=ApiResponse[SocietyResponse])
 async def update_society(
     society_id: uuid.UUID,
     payload: SocietyUpdate,
@@ -111,13 +115,14 @@ async def update_society(
     """
     service = SocietyService(db)
     async with safe_transaction(db):
-        return await service.update_society(society_id, payload)
+        res = await service.update_society(society_id, payload)
+        return {"success": True, "message": "Society updated successfully", "data": res}
 
 
 
 # --- Scoped RBAC Endpoints ---
 
-@router.post("/{society_id}/assign-role", response_model=UserSocietyRoleResponse, status_code=status.HTTP_200_OK)
+@router.post("/{society_id}/assign-role", response_model=ApiResponse[UserSocietyRoleResponse], status_code=status.HTTP_200_OK)
 async def assign_user_society_role(
     society_id: uuid.UUID,
     payload: UserSocietyRoleAssign,
@@ -135,12 +140,12 @@ async def assign_user_society_role(
             user_id=payload.user_id,
             role=payload.role.value
         )
-        return user_role
+        return {"success": True, "message": "User role assigned successfully", "data": user_role}
 
 
 # --- Building Endpoints ---
 
-@router.post("/{society_id}/buildings", response_model=BuildingResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{society_id}/buildings", response_model=ApiResponse[BuildingResponse], status_code=status.HTTP_201_CREATED)
 async def create_building(
     society_id: uuid.UUID,
     payload: BuildingCreate,
@@ -152,10 +157,11 @@ async def create_building(
     """
     service = BuildingService(db)
     async with safe_transaction(db):
-        return await service.create_building(society_id, payload)
+        res = await service.create_building(society_id, payload)
+        return {"success": True, "message": "Building created successfully", "data": res}
 
 
-@router.get("/{society_id}/buildings", response_model=List[BuildingResponse])
+@router.get("/{society_id}/buildings", response_model=ApiResponse[List[BuildingResponse]])
 async def list_buildings(
     society_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
@@ -165,10 +171,11 @@ async def list_buildings(
     List all buildings/wings in a specific society.
     """
     service = BuildingService(db)
-    return await service.list_buildings(society_id)
+    res = await service.list_buildings(society_id)
+    return {"success": True, "message": "Buildings retrieved successfully", "data": res}
 
 
-@router.patch("/{society_id}/buildings/{building_id}", response_model=BuildingResponse)
+@router.patch("/{society_id}/buildings/{building_id}", response_model=ApiResponse[BuildingResponse])
 async def update_building(
     society_id: uuid.UUID,
     building_id: uuid.UUID,
@@ -182,13 +189,14 @@ async def update_building(
     """
     service = BuildingService(db)
     async with safe_transaction(db):
-        return await service.update_building(society_id, building_id, payload)
+        res = await service.update_building(society_id, building_id, payload)
+        return {"success": True, "message": "Building updated successfully", "data": res}
 
 
 
 # --- Floor Endpoints ---
 
-@router.post("/{society_id}/buildings/{building_id}/floors", response_model=FloorResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{society_id}/buildings/{building_id}/floors", response_model=ApiResponse[FloorResponse], status_code=status.HTTP_201_CREATED)
 async def create_floor(
     society_id: uuid.UUID,
     building_id: uuid.UUID,
@@ -210,10 +218,11 @@ async def create_floor(
 
     service = FloorService(db)
     async with safe_transaction(db):
-        return await service.create_floor(building_id, payload)
+        res = await service.create_floor(building_id, payload)
+        return {"success": True, "message": "Floor created successfully", "data": res}
 
 
-@router.get("/{society_id}/buildings/{building_id}/floors", response_model=List[FloorResponse])
+@router.get("/{society_id}/buildings/{building_id}/floors", response_model=ApiResponse[List[FloorResponse]])
 async def list_floors(
     society_id: uuid.UUID,
     building_id: uuid.UUID,
@@ -232,12 +241,13 @@ async def list_floors(
         )
 
     service = FloorService(db)
-    return await service.list_floors(building_id)
+    res = await service.list_floors(building_id)
+    return {"success": True, "message": "Floors retrieved successfully", "data": res}
 
 
 # --- Unit Endpoints ---
 
-@router.post("/{society_id}/buildings/{building_id}/floors/{floor_id}/units", response_model=UnitResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{society_id}/buildings/{building_id}/floors/{floor_id}/units", response_model=ApiResponse[UnitResponse], status_code=status.HTTP_201_CREATED)
 async def create_unit(
     society_id: uuid.UUID,
     building_id: uuid.UUID,
@@ -268,10 +278,11 @@ async def create_unit(
 
     service = UnitService(db)
     async with safe_transaction(db):
-        return await service.create_unit(floor_id, payload)
+        res = await service.create_unit(floor_id, payload)
+        return {"success": True, "message": "Unit created successfully", "data": res}
 
 
-@router.get("/{society_id}/buildings/{building_id}/floors/{floor_id}/units", response_model=List[UnitResponse])
+@router.get("/{society_id}/buildings/{building_id}/floors/{floor_id}/units", response_model=ApiResponse[List[UnitResponse]])
 async def list_units(
     society_id: uuid.UUID,
     building_id: uuid.UUID,
@@ -299,10 +310,11 @@ async def list_units(
         )
 
     service = UnitService(db)
-    return await service.list_units(floor_id)
+    res = await service.list_units(floor_id)
+    return {"success": True, "message": "Units retrieved successfully", "data": res}
 
 
-@router.patch("/{society_id}/buildings/{building_id}/floors/{floor_id}/units/{unit_id}", response_model=UnitResponse)
+@router.patch("/{society_id}/buildings/{building_id}/floors/{floor_id}/units/{unit_id}", response_model=ApiResponse[UnitResponse])
 async def update_unit(
     society_id: uuid.UUID,
     building_id: uuid.UUID,
@@ -335,13 +347,14 @@ async def update_unit(
 
     service = UnitService(db)
     async with safe_transaction(db):
-        return await service.update_unit(floor_id, unit_id, payload)
+        res = await service.update_unit(floor_id, unit_id, payload)
+        return {"success": True, "message": "Unit updated successfully", "data": res}
 
 
 
 # --- Resident Endpoints ---
 
-@router.post("/{society_id}/units/{unit_id}/residents", response_model=ResidentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{society_id}/units/{unit_id}/residents", response_model=ApiResponse[ResidentResponse], status_code=status.HTTP_201_CREATED)
 async def assign_resident(
     society_id: uuid.UUID,
     unit_id: uuid.UUID,
@@ -367,10 +380,11 @@ async def assign_resident(
 
     service = ResidentService(db)
     async with safe_transaction(db):
-        return await service.assign_resident(unit_id, payload)
+        res = await service.assign_resident(unit_id, payload)
+        return {"success": True, "message": "Resident assigned successfully", "data": res}
 
 
-@router.get("/{society_id}/units/{unit_id}/residents", response_model=List[ResidentResponse])
+@router.get("/{society_id}/units/{unit_id}/residents", response_model=ApiResponse[List[ResidentResponse]])
 async def list_residents(
     society_id: uuid.UUID,
     unit_id: uuid.UUID,
@@ -393,12 +407,13 @@ async def list_residents(
         )
 
     service = ResidentService(db)
-    return await service.list_residents(unit_id)
+    res = await service.list_residents(unit_id)
+    return {"success": True, "message": "Residents retrieved successfully", "data": res}
 
 
 # --- Vehicle Endpoints ---
 
-@router.post("/{society_id}/units/{unit_id}/vehicles", response_model=VehicleResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/{society_id}/units/{unit_id}/vehicles", response_model=ApiResponse[VehicleResponse], status_code=status.HTTP_201_CREATED)
 async def register_vehicle(
     society_id: uuid.UUID,
     unit_id: uuid.UUID,
@@ -424,10 +439,11 @@ async def register_vehicle(
 
     service = VehicleService(db)
     async with safe_transaction(db):
-        return await service.register_vehicle(unit_id, payload)
+        res = await service.register_vehicle(unit_id, payload)
+        return {"success": True, "message": "Vehicle registered successfully", "data": res}
 
 
-@router.get("/{society_id}/units/{unit_id}/vehicles", response_model=List[VehicleResponse])
+@router.get("/{society_id}/units/{unit_id}/vehicles", response_model=ApiResponse[List[VehicleResponse]])
 async def list_vehicles(
     society_id: uuid.UUID,
     unit_id: uuid.UUID,
@@ -450,12 +466,13 @@ async def list_vehicles(
         )
 
     service = VehicleService(db)
-    return await service.list_vehicles(unit_id)
+    res = await service.list_vehicles(unit_id)
+    return {"success": True, "message": "Vehicles retrieved successfully", "data": res}
 
 
 # --- Bulk Provisioning Endpoints ---
 
-@router.post("/{society_id}/provision", response_model=List[BuildingResponse], status_code=status.HTTP_201_CREATED)
+@router.post("/{society_id}/provision", response_model=ApiResponse[List[BuildingResponse]], status_code=status.HTTP_201_CREATED)
 async def provision_society_structure(
     society_id: uuid.UUID,
     payload: BulkProvisionRequest,
@@ -468,4 +485,5 @@ async def provision_society_structure(
     """
     service = BulkProvisionService(db)
     async with safe_transaction(db):
-        return await service.provision_society_structure(society_id, payload)
+        res = await service.provision_society_structure(society_id, payload)
+        return {"success": True, "message": "Society structure provisioned successfully", "data": res}
