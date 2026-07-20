@@ -105,8 +105,9 @@ def test_create_society_as_platform_admin(mock_service_cls, test_client, mock_pl
     
     assert response.status_code == 201
     data = response.json()
-    assert data["name"] == "Palm Heights"
-    assert data["registration_no"] == "PH-992"
+    assert data["success"] is True
+    assert data["data"]["name"] == "Palm Heights"
+    assert data["data"]["registration_no"] == "PH-992"
 
 
 def test_create_society_as_normal_user_forbidden(test_client):
@@ -155,7 +156,8 @@ def test_create_building_success(mock_service_cls, test_client, mock_normal_user
     
     assert response.status_code == 201
     data = response.json()
-    assert data["name"] == "Tower A"
+    assert data["success"] is True
+    assert data["data"]["name"] == "Tower A"
 
 
 @patch("app.societies.routes.BulkProvisionService")
@@ -189,5 +191,6 @@ def test_bulk_provision_success(mock_service_cls, test_client):
     
     assert response.status_code == 201
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["name"] == "Tower A"
+    assert data["success"] is True
+    assert len(data["data"]) == 1
+    assert data["data"][0]["name"] == "Tower A"
