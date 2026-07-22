@@ -74,6 +74,7 @@ origins = [
     "http://127.0.0.1:4200",
     "http://localhost:5114",
     "https://localhost:5114",
+    "https://saclon-nsp.github.io",  # GitHub Pages deployed UI
 ]
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
