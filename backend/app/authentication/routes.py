@@ -91,7 +91,16 @@ async def _handle_signup_and_issue_tokens(
         return {
             "success": True,
             "message": "Signup successful",
-            "data": {"access_token": access_token, "token_type": "bearer"}
+            "data": {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "user": {
+                    "user_id": user_id_str,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "role": user.role,
+                }
+            }
         }
         
     except ValueError as e:
@@ -149,7 +158,16 @@ async def _handle_login_and_issue_tokens(
         return {
             "success": True,
             "message": "Login successful",
-            "data": {"access_token": access_token, "token_type": "bearer"}
+            "data": {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "user": {
+                    "user_id": user_id_str,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "role": user.role,
+                }
+            }
         }
         
     except ValueError as e:
