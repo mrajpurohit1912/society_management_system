@@ -9,6 +9,7 @@ from app.core.logging_config import setup_logging
 from app.core.logging_context import set_logging_context, clear_logging_context
 from app.authentication.routes import router as auth_router
 from app.societies.routes import router as societies_router
+from app.platform.routes import router as platform_router
 
 # Initialize structured logging
 setup_logging(env=settings.ENV, log_level=settings.LOG_LEVEL)
@@ -23,13 +24,8 @@ app = FastAPI(
 
 @app.middleware("http")
 async def logging_middleware(request: Request, call_next):
-    # Reset logging context for this request
     clear_logging_context()
-
-    # Generate or propagate Correlation ID
     correlation_id = request.headers.get("X-Correlation-ID") or request.headers.get("X-Request-ID") or str(uuid.uuid4())
-    
-    # Store request context
     client_ip = request.client.host if request.client else "unknown"
     set_logging_context(
         correlation_id=correlation_id,
@@ -44,10 +40,7 @@ async def logging_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start_time) * 1000
-        
-        # Add correlation ID to response headers for tracking
         response.headers["X-Correlation-ID"] = correlation_id
-        
         logger.info(
             "request.finished",
             status_code=response.status_code,
@@ -65,16 +58,11 @@ async def logging_middleware(request: Request, call_next):
 
 import os
 
-# Setup CORS (Cross-Origin Resource Sharing)
-# Configure these origins according to production deployment domain
 origins = [
-    "http://localhost:3000",  # Default local React/Next.js port
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:4200",  # Angular/frontend development port
+    "http://localhost:4200",
     "http://127.0.0.1:4200",
-    "http://localhost:5114",
-    "https://localhost:5114",
-    "https://saclon-nsp.github.io",  # GitHub Pages deployed UI
 ]
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
@@ -92,6 +80,7 @@ app.add_middleware(
 # Register Feature Slices Routers
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(societies_router, prefix="/api/v1")
+app.include_router(platform_router, prefix="/api/v1")
 
 @app.get("/")
 def read_root():

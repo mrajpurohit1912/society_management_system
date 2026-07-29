@@ -84,8 +84,10 @@ class UserRepository:
 
         return user
 
-    async def add_refresh_token(self, user_id: uuid.UUID, token_hash: str, expires_at: datetime) -> RefreshTokenModel:
+    async def add_refresh_token(self, user_id: uuid.UUID | str, token_hash: str, expires_at: datetime) -> RefreshTokenModel:
         """Register a new active refresh token session for a user."""
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
         token = RefreshTokenModel(
             user_id=user_id,
             token_hash=token_hash,

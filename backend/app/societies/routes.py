@@ -1,7 +1,8 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
 
 from contextlib import asynccontextmanager
 from app.core.schemas import ApiResponse
@@ -35,20 +36,15 @@ from app.societies.services import (
     UnitService,
     ResidentService,
     VehicleService,
-    BulkProvisionService
+    BulkProvisionService,
+    MembershipService
 )
 
-router = APIRouter(prefix="/societies", tags=["Society Management"])
+router = APIRouter(prefix="/societies", tags=["Society & Membership Management"])
 
 
 @asynccontextmanager
 async def safe_transaction(db: AsyncSession):
-    """
-    Safely manage database transaction boundaries.
-    If a transaction was already started implicitly (e.g. by query executions 
-    in dependencies), this context manager will yield and commit on success.
-    Otherwise, it opens a new transaction context.
-    """
     if db.in_transaction():
         yield
         await db.commit()
@@ -57,8 +53,150 @@ async def safe_transaction(db: AsyncSession):
             yield
 
 
+# --- Membership Request Schemas ---
+class RequestMembershipPayload(BaseModel):
+    society_id: uuid.UUID
+    unit_id: Optional[uuid.UUID] = None
+    role: Optional[str] = Field(default="resident", json_schema_extra={"example": "resident"})
 
-# --- Society Endpoints ---
+class RejectMembershipPayload(BaseModel):
+    reason: Optional[str] = None
+
+
+# --- Membership Endpoints ---
+
+@router.post("/membership/request", status_code=status.HTTP_201_CREATED)
+async def request_membership(
+    payload: RequestMembershipPayload,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(get_current_user)
+):
+    """
+    Resident Endpoint: Submit a membership request to join a specific society and flat unit.
+    """
+    service = MembershipService(db)
+    async with safe_transaction(db):
+        res = await service.request_membership(
+            user_id=current_user.user_id,
+            society_id=payload.society_id,
+            unit_id=payload.unit_id,
+            role=payload.role or "resident"
+        )
+        return {
+            "success": True,
+            "message": "Membership request submitted successfully. Waiting for Society Admin approval.",
+            "data": {
+                "membership_id": str(res.id),
+                "society_id": str(res.society_id),
+                "unit_id": str(res.unit_id) if res.unit_id else None,
+                "status": res.status,
+                "role": res.role,
+            }
+        }
+
+
+@router.get("/membership/status")
+async def get_membership_status(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(get_current_user)
+):
+    """
+    Resident Endpoint: Fetch current user's society memberships and statuses.
+    """
+    service = MembershipService(db)
+    memberships = await service.get_user_memberships(current_user.user_id)
+    return {
+        "success": True,
+        "data": [
+            {
+                "membership_id": str(m.id),
+                "society_id": str(m.society_id),
+                "unit_id": str(m.unit_id) if m.unit_id else None,
+                "role": m.role,
+                "status": m.status,
+            } for m in memberships
+        ]
+    }
+
+
+@router.get("/{society_id}/membership/requests")
+async def list_pending_membership_requests(
+    society_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin)
+):
+    """
+    Society Admin Endpoint: List all pending membership requests for the society.
+    """
+    service = MembershipService(db)
+    requests = await service.list_pending_requests(society_id)
+    return {
+        "success": True,
+        "data": [
+            {
+                "membership_id": str(r.id),
+                "user_id": str(r.user_id),
+                "society_id": str(r.society_id),
+                "unit_id": str(r.unit_id) if r.unit_id else None,
+                "role": r.role,
+                "status": r.status,
+                "requested_at": r.created_at.isoformat() if r.created_at else None,
+            } for r in requests
+        ]
+    }
+
+
+@router.post("/{society_id}/membership/{membership_id}/approve")
+async def approve_membership_request(
+    society_id: uuid.UUID,
+    membership_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin)
+):
+    """
+    Society Admin Endpoint: Approve a resident's membership request and trigger automated Resend email.
+    """
+    service = MembershipService(db)
+    async with safe_transaction(db):
+        res = await service.approve_membership(membership_id, approved_by_user_id=current_user.user_id)
+        return {
+            "success": True,
+            "message": "Membership request approved successfully! Notification email sent via Resend.",
+            "data": {
+                "membership_id": str(res.id),
+                "user_id": str(res.user_id),
+                "status": res.status,
+            }
+        }
+
+
+@router.post("/{society_id}/membership/{membership_id}/reject")
+async def reject_membership_request(
+    society_id: uuid.UUID,
+    membership_id: uuid.UUID,
+    payload: Optional[RejectMembershipPayload] = None,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin)
+):
+    """
+    Society Admin Endpoint: Reject a resident's membership request and trigger automated Resend email.
+    """
+    reason = payload.reason if payload else None
+    service = MembershipService(db)
+    async with safe_transaction(db):
+        res = await service.reject_membership(membership_id, approved_by_user_id=current_user.user_id, reason=reason)
+        return {
+            "success": True,
+            "message": "Membership request rejected.",
+            "data": {
+                "membership_id": str(res.id),
+                "user_id": str(res.user_id),
+                "status": res.status,
+            }
+        }
+
+
+# --- Existing Society Endpoints ---
 
 @router.post("", response_model=ApiResponse[SocietyResponse], status_code=status.HTTP_201_CREATED)
 async def create_society(
@@ -66,11 +204,7 @@ async def create_society(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_platform_admin)
 ):
-    """
-    Create a new housing society. Restricted to Platform/Super Admins.
-    """
     service = SocietyService(db)
-    # Perform inside transaction block
     async with safe_transaction(db):
         res = await service.create_society(payload)
         return {"success": True, "message": "Society created successfully", "data": res}
@@ -81,9 +215,6 @@ async def list_societies(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """
-    List all housing societies registered on the platform.
-    """
     service = SocietyService(db)
     res = await service.list_societies()
     return {"success": True, "message": "Societies retrieved successfully", "data": res}
@@ -95,9 +226,6 @@ async def get_society(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """
-    Get details of a specific housing society by its ID.
-    """
     service = SocietyService(db)
     res = await service.get_society(society_id)
     return {"success": True, "message": "Society details retrieved successfully", "data": res}
@@ -110,17 +238,11 @@ async def update_society(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_platform_admin)
 ):
-    """
-    Update a society's details. Restricted to Platform/Super Admins.
-    """
     service = SocietyService(db)
     async with safe_transaction(db):
         res = await service.update_society(society_id, payload)
         return {"success": True, "message": "Society updated successfully", "data": res}
 
-
-
-# --- Scoped RBAC Endpoints ---
 
 @router.post("/{society_id}/assign-role", response_model=ApiResponse[UserSocietyRoleResponse], status_code=status.HTTP_200_OK)
 async def assign_user_society_role(
@@ -129,10 +251,6 @@ async def assign_user_society_role(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_society_admin)
 ):
-    """
-    Assign a role (admin, member, security) to a user within a specific society.
-    Restricted to Society Admins.
-    """
     service = SocietyService(db)
     async with safe_transaction(db):
         user_role = await service.repo.assign_user_society_role(
@@ -152,9 +270,6 @@ async def create_building(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_society_admin)
 ):
-    """
-    Create a new building/wing inside a society. Restricted to Society Admins.
-    """
     service = BuildingService(db)
     async with safe_transaction(db):
         res = await service.create_building(society_id, payload)
@@ -167,9 +282,6 @@ async def list_buildings(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """
-    List all buildings/wings in a specific society.
-    """
     service = BuildingService(db)
     res = await service.list_buildings(society_id)
     return {"success": True, "message": "Buildings retrieved successfully", "data": res}
@@ -183,15 +295,10 @@ async def update_building(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_society_admin)
 ):
-    """
-    Update a building's details (such as address, phone, email, status).
-    Restricted to Society Admins.
-    """
     service = BuildingService(db)
     async with safe_transaction(db):
         res = await service.update_building(society_id, building_id, payload)
         return {"success": True, "message": "Building updated successfully", "data": res}
-
 
 
 # --- Floor Endpoints ---
@@ -204,10 +311,6 @@ async def create_floor(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_society_admin)
 ):
-    """
-    Create a floor inside a building. Restricted to Society Admins.
-    """
-    # Double check that building belongs to society
     b_service = BuildingService(db)
     building = await b_service.get_building(building_id)
     if building.society_id != society_id:
@@ -229,9 +332,6 @@ async def list_floors(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """
-    List all floors in a building.
-    """
     b_service = BuildingService(db)
     building = await b_service.get_building(building_id)
     if building.society_id != society_id:
@@ -256,10 +356,6 @@ async def create_unit(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_society_admin)
 ):
-    """
-    Create a new unit/flat on a floor. Restricted to Society Admins.
-    """
-    # Validate hierarchy
     f_service = FloorService(db)
     floor = await f_service.get_floor(floor_id)
     if floor.building_id != building_id:
@@ -290,9 +386,6 @@ async def list_units(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """
-    List all units/flats on a floor.
-    """
     f_service = FloorService(db)
     floor = await f_service.get_floor(floor_id)
     if floor.building_id != building_id:
@@ -324,11 +417,6 @@ async def update_unit(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_society_admin)
 ):
-    """
-    Update a unit/flat's details (such as unit number, type, status).
-    Restricted to Society Admins.
-    """
-    # Validate hierarchy
     f_service = FloorService(db)
     floor = await f_service.get_floor(floor_id)
     if floor.building_id != building_id:
@@ -351,7 +439,6 @@ async def update_unit(
         return {"success": True, "message": "Unit updated successfully", "data": res}
 
 
-
 # --- Resident Endpoints ---
 
 @router.post("/{society_id}/units/{unit_id}/residents", response_model=ApiResponse[ResidentResponse], status_code=status.HTTP_201_CREATED)
@@ -362,10 +449,6 @@ async def assign_resident(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_society_admin)
 ):
-    """
-    Assign a user as a resident to a unit. Restricted to Society Admins.
-    """
-    # Verify unit belongs to the society
     u_service = UnitService(db)
     unit = await u_service.get_unit(unit_id)
     f_service = FloorService(db)
@@ -391,9 +474,6 @@ async def list_residents(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """
-    List all residents assigned to a unit.
-    """
     u_service = UnitService(db)
     unit = await u_service.get_unit(unit_id)
     f_service = FloorService(db)
@@ -421,10 +501,6 @@ async def register_vehicle(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """
-    Register a vehicle to a unit. Open to logged-in members (a resident registers their own car) or admins.
-    """
-    # Verify unit belongs to the society
     u_service = UnitService(db)
     unit = await u_service.get_unit(unit_id)
     f_service = FloorService(db)
@@ -450,9 +526,6 @@ async def list_vehicles(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(get_current_user)
 ):
-    """
-    List all registered vehicles for a unit.
-    """
     u_service = UnitService(db)
     unit = await u_service.get_unit(unit_id)
     f_service = FloorService(db)
@@ -479,10 +552,6 @@ async def provision_society_structure(
     db: AsyncSession = Depends(get_db_session),
     current_user: UserModel = Depends(require_society_admin)
 ):
-    """
-    Bulk provision buildings, floors, and units for a society in a single atomic database transaction.
-    Restricted to Society Admins.
-    """
     service = BulkProvisionService(db)
     async with safe_transaction(db):
         res = await service.provision_society_structure(society_id, payload)

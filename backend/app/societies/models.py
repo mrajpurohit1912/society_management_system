@@ -12,7 +12,22 @@ class SocietyStatus(str, enum.Enum):
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
 
+class SubscriptionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    SUSPENDED = "suspended"
 
+class LeadStatus(str, enum.Enum):
+    LEAD_CREATED = "lead_created"
+    CONTACTED = "contacted"
+    ONBOARDED = "onboarded"
+
+class MembershipStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ACTIVE = "active"
+    REMOVED = "removed"
 
 class UnitType(str, enum.Enum):
     FLAT = "flat"
@@ -43,8 +58,11 @@ class VehicleType(str, enum.Enum):
 
 class SocietyRole(str, enum.Enum):
     ADMIN = "admin"
-    MEMBER = "member"
+    SOCIETY_ADMIN = "society_admin"
+    COMMITTEE = "committee"
+    RESIDENT = "resident"
     SECURITY = "security"
+    MEMBER = "member"
 
 
 class SocietyModel(Base):
@@ -67,8 +85,44 @@ class SocietyModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    buildings: Mapped[List["BuildingModel"]] = relationship("BuildingModel", back_populates="society", cascade="all, delete-orphan")
-    roles: Mapped[List["UserSocietyRoleModel"]] = relationship("UserSocietyRoleModel", back_populates="society", cascade="all, delete-orphan")
+    buildings: Mapped[List["BuildingModel"]] = relationship("BuildingModel", back_populates="society", cascade="all, delete-orphan", lazy="selectin")
+    roles: Mapped[List["UserSocietyRoleModel"]] = relationship("UserSocietyRoleModel", back_populates="society", cascade="all, delete-orphan", lazy="selectin")
+    subscription: Mapped[Optional["SubscriptionModel"]] = relationship("SubscriptionModel", back_populates="society", uselist=False, cascade="all, delete-orphan", lazy="selectin")
+
+
+class SubscriptionModel(Base):
+    __tablename__ = "subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    society_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("societies.id", ondelete="CASCADE"), nullable=False, unique=True)
+    plan: Mapped[str] = mapped_column(String(50), default="GOLD", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default=SubscriptionStatus.ACTIVE.value, nullable=False)
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expiry_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    max_admins: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    max_storage_gb: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    society: Mapped["SocietyModel"] = relationship("SocietyModel", back_populates="subscription")
+
+
+class SocietyLeadModel(Base):
+    __tablename__ = "society_leads"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    primary_contact_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    mobile: Mapped[str] = mapped_column(String(50), nullable=False)
+    city: Mapped[str] = mapped_column(String(100), nullable=False)
+    expected_flats: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    expected_admins: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    comments: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default=LeadStatus.LEAD_CREATED.value, nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class BuildingModel(Base):
@@ -80,9 +134,8 @@ class BuildingModel(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
     society: Mapped["SocietyModel"] = relationship("SocietyModel", back_populates="buildings")
-    floors: Mapped[List["FloorModel"]] = relationship("FloorModel", back_populates="building", cascade="all, delete-orphan")
+    floors: Mapped[List["FloorModel"]] = relationship("FloorModel", back_populates="building", cascade="all, delete-orphan", lazy="selectin")
 
 
 class FloorModel(Base):
@@ -95,9 +148,8 @@ class FloorModel(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
     building: Mapped["BuildingModel"] = relationship("BuildingModel", back_populates="floors")
-    units: Mapped[List["UnitModel"]] = relationship("UnitModel", back_populates="floor", cascade="all, delete-orphan")
+    units: Mapped[List["UnitModel"]] = relationship("UnitModel", back_populates="floor", cascade="all, delete-orphan", lazy="selectin")
 
 
 class UnitModel(Base):
@@ -111,10 +163,9 @@ class UnitModel(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
     floor: Mapped["FloorModel"] = relationship("FloorModel", back_populates="units")
-    residents: Mapped[List["UnitResidentModel"]] = relationship("UnitResidentModel", back_populates="unit", cascade="all, delete-orphan")
-    vehicles: Mapped[List["VehicleModel"]] = relationship("VehicleModel", back_populates="unit", cascade="all, delete-orphan")
+    residents: Mapped[List["UnitResidentModel"]] = relationship("UnitResidentModel", back_populates="unit", cascade="all, delete-orphan", lazy="selectin")
+    vehicles: Mapped[List["VehicleModel"]] = relationship("VehicleModel", back_populates="unit", cascade="all, delete-orphan", lazy="selectin")
 
 
 class UnitResidentModel(Base):
@@ -131,7 +182,6 @@ class UnitResidentModel(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
     unit: Mapped["UnitModel"] = relationship("UnitModel", back_populates="residents")
     user: Mapped["UserModel"] = relationship("UserModel")
 
@@ -147,7 +197,6 @@ class VehicleModel(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
     unit: Mapped["UnitModel"] = relationship("UnitModel", back_populates="vehicles")
     resident: Mapped[Optional["UnitResidentModel"]] = relationship("UnitResidentModel")
 
@@ -158,10 +207,13 @@ class UserSocietyRoleModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     society_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("societies.id", ondelete="CASCADE"), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), default=SocietyRole.MEMBER.value, nullable=False)
+    unit_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("units.id", ondelete="SET NULL"), nullable=True)
+    role: Mapped[str] = mapped_column(String(30), default=SocietyRole.MEMBER.value, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default=MembershipStatus.PENDING.value, nullable=False)
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
-    user: Mapped["UserModel"] = relationship("UserModel")
+    user: Mapped["UserModel"] = relationship("UserModel", foreign_keys=[user_id])
     society: Mapped["SocietyModel"] = relationship("SocietyModel", back_populates="roles")
+    unit: Mapped[Optional["UnitModel"]] = relationship("UnitModel")

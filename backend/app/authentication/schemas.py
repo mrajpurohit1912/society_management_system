@@ -23,6 +23,8 @@ class UserDomain(BaseModel):
     first_name: str = Field(..., max_length=50)
     last_name: str = Field(..., max_length=50)
     role: str
+    status: Optional[str] = "registered"
+    email_verified: Optional[bool] = False
     created_at: datetime
     updated_at: datetime
     credentials: List[AuthCredentialDomain] = []
@@ -31,11 +33,16 @@ class UserDomain(BaseModel):
         from_attributes = True
 
 
-# --- Request DTOs (Data Transfer Objects) ---
+# --- Request DTOs ---
 
 class BaseSignupRequest(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=50)
     last_name: str = Field(..., min_length=1, max_length=50)
+
+class ResidentSignupRequest(BaseSignupRequest):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    mobile_number: Optional[str] = None
 
 class UsernamePasswordSignupRequest(BaseSignupRequest):
     username: str = Field(..., min_length=4, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
@@ -57,9 +64,18 @@ class AdminSignupRequest(BaseSignupRequest):
     password: str = Field(..., min_length=8, max_length=128)
     admin_secret: str
 
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(..., min_length=10)
 
+class AdminActivateRequest(BaseModel):
+    token: str = Field(..., min_length=10)
+    password: str = Field(..., min_length=8, max_length=128)
 
-# Schema for LoginRequest
+# Unified Signin Request
+class UnifiedLoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+
 class UsernameSigninRequest(BaseModel):
     username: str = Field(..., min_length=4, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
     password: str = Field(..., min_length=8, max_length=128)
@@ -74,5 +90,3 @@ class MobileOTPSigninRequest(BaseModel):
 
 class GoogleSigninRequest(BaseModel):
     google_id_token: str
-
-

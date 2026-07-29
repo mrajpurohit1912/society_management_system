@@ -17,10 +17,6 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     db: AsyncSession = Depends(get_db_session)
 ) -> UserModel:
-    """
-    FastAPI dependency that extracts the bearer token, decodes it,
-    verifies its signature and expiry, and retrieves the UserModel from the DB.
-    """
     token = credentials.credentials
     try:
         payload = TokenService.verify_token(token)
@@ -55,10 +51,7 @@ async def get_current_user(
 async def require_platform_admin(
     current_user: UserModel = Depends(get_current_user)
 ) -> UserModel:
-    """
-    FastAPI dependency requiring the user to be a global platform admin.
-    """
-    if current_user.role != "admin":
+    if current_user.role not in ("platform_admin", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: Platform administrative privileges required."
@@ -71,12 +64,8 @@ async def require_society_admin(
     current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session)
 ) -> UserModel:
-    """
-    FastAPI dependency requiring the user to be either a global platform admin
-    OR a local society administrator for the specified society.
-    """
-    # 1. Global Admin bypass
-    if current_user.role == "admin":
+    # 1. Global Platform Admin bypass
+    if current_user.role in ("platform_admin", "admin"):
         return current_user
         
     # 2. Check society-specific role mapping
@@ -87,11 +76,10 @@ async def require_society_admin(
     result = await db.execute(query)
     role_mapping = result.scalar_one_or_none()
     
-    if not role_mapping or role_mapping.role != SocietyRole.ADMIN.value:
+    if not role_mapping or role_mapping.role not in (SocietyRole.ADMIN.value, SocietyRole.SOCIETY_ADMIN.value):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: Society administrative privileges required for this action."
         )
         
     return current_user
-

@@ -1,10 +1,14 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from fastapi import HTTPException, status
+import structlog
 
 from app.societies.repository import SocietyRepository
 from app.authentication.repository import UserRepository
+from app.core.email_service import EmailService
+from app.authentication.models import UserModel
 from app.societies.models import (
     SocietyModel,
     BuildingModel,
@@ -12,7 +16,9 @@ from app.societies.models import (
     UnitModel,
     UnitResidentModel,
     VehicleModel,
-    UserSocietyRoleModel
+    UserSocietyRoleModel,
+    MembershipStatus,
+    SocietyRole
 )
 from app.societies.schemas import (
     SocietyCreate,
@@ -27,12 +33,166 @@ from app.societies.schemas import (
     BulkProvisionRequest
 )
 
+logger = structlog.get_logger(__name__)
+
+class MembershipService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def request_membership(
+        self, user_id: uuid.UUID, society_id: uuid.UUID, unit_id: Optional[uuid.UUID] = None, role: str = SocietyRole.RESIDENT.value
+    ) -> UserSocietyRoleModel:
+        # Verify society
+        stmt_soc = select(SocietyModel).where(SocietyModel.id == society_id)
+        res_soc = await self.db.execute(stmt_soc)
+        society = res_soc.scalar_one_or_none()
+        if not society:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Society not found")
+
+        # Verify unit if provided
+        unit_number = None
+        if unit_id:
+            stmt_unit = select(UnitModel).where(UnitModel.id == unit_id)
+            res_unit = await self.db.execute(stmt_unit)
+            unit = res_unit.scalar_one_or_none()
+            if not unit:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
+            unit_number = unit.unit_number
+
+        # Check existing membership
+        stmt_mem = select(UserSocietyRoleModel).where(
+            UserSocietyRoleModel.user_id == user_id,
+            UserSocietyRoleModel.society_id == society_id,
+        )
+        res_mem = await self.db.execute(stmt_mem)
+        existing = res_mem.scalar_one_or_none()
+
+        if existing:
+            if existing.status == MembershipStatus.APPROVED.value:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You are already an active member of this society")
+            elif existing.status == MembershipStatus.PENDING.value:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your membership request for this society is already pending approval")
+            else:
+                existing.status = MembershipStatus.PENDING.value
+                existing.unit_id = unit_id
+                existing.role = role
+                await self.db.flush()
+                return existing
+
+        membership = UserSocietyRoleModel(
+            user_id=user_id,
+            society_id=society_id,
+            unit_id=unit_id,
+            role=role,
+            status=MembershipStatus.PENDING.value,
+        )
+        self.db.add(membership)
+        await self.db.flush()
+
+        logger.info("membership.requested", user_id=str(user_id), society_id=str(society_id), unit_id=str(unit_id) if unit_id else None)
+        return membership
+
+    async def get_user_memberships(self, user_id: uuid.UUID) -> List[UserSocietyRoleModel]:
+        stmt = select(UserSocietyRoleModel).where(UserSocietyRoleModel.user_id == user_id)
+        res = await self.db.execute(stmt)
+        return res.scalars().all()
+
+    async def list_pending_requests(self, society_id: uuid.UUID) -> List[UserSocietyRoleModel]:
+        stmt = select(UserSocietyRoleModel).where(
+            UserSocietyRoleModel.society_id == society_id,
+            UserSocietyRoleModel.status == MembershipStatus.PENDING.value
+        )
+        res = await self.db.execute(stmt)
+        return res.scalars().all()
+
+    async def approve_membership(self, membership_id: uuid.UUID, approved_by_user_id: uuid.UUID) -> UserSocietyRoleModel:
+        stmt = select(UserSocietyRoleModel).where(UserSocietyRoleModel.id == membership_id)
+        res = await self.db.execute(stmt)
+        membership = res.scalar_one_or_none()
+        if not membership:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership request not found")
+
+        membership.status = MembershipStatus.APPROVED.value
+        membership.approved_by = approved_by_user_id
+        await self.db.flush()
+
+        # Fetch User & Society details for Email Notification
+        stmt_user = select(UserModel).where(UserModel.user_id == membership.user_id)
+        res_user = await self.db.execute(stmt_user)
+        user = res_user.scalar_one_or_none()
+
+        stmt_soc = select(SocietyModel).where(SocietyModel.id == membership.society_id)
+        res_soc = await self.db.execute(stmt_soc)
+        society = res_soc.scalar_one_or_none()
+
+        unit_number = "N/A"
+        if membership.unit_id:
+            stmt_u = select(UnitModel).where(UnitModel.id == membership.unit_id)
+            res_u = await self.db.execute(stmt_u)
+            unit_obj = res_u.scalar_one_or_none()
+            if unit_obj:
+                unit_number = unit_obj.unit_number
+
+        # Fetch Email from Credentials
+        if user and society:
+            stmt_cred = select(UserRepository.get_user_credentials if hasattr(UserRepository, 'get_user_credentials') else UserModel)
+            # Send notification email via Resend Service
+            from app.authentication.models import AuthCredentialModel
+            stmt_c = select(AuthCredentialModel).where(AuthCredentialModel.user_id == user.user_id)
+            res_c = await self.db.execute(stmt_c)
+            cred = res_c.scalar_one_or_none()
+            if cred:
+                EmailService.send_membership_approval_email(
+                    to_email=cred.identifier,
+                    name=f"{user.first_name} {user.last_name}",
+                    society_name=society.name,
+                    unit_number=unit_number
+                )
+
+        logger.info("membership.approved", membership_id=str(membership_id), user_id=str(membership.user_id))
+        return membership
+
+    async def reject_membership(self, membership_id: uuid.UUID, approved_by_user_id: uuid.UUID, reason: Optional[str] = None) -> UserSocietyRoleModel:
+        stmt = select(UserSocietyRoleModel).where(UserSocietyRoleModel.id == membership_id)
+        res = await self.db.execute(stmt)
+        membership = res.scalar_one_or_none()
+        if not membership:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership request not found")
+
+        membership.status = MembershipStatus.REJECTED.value
+        membership.approved_by = approved_by_user_id
+        await self.db.flush()
+
+        stmt_user = select(UserModel).where(UserModel.user_id == membership.user_id)
+        res_user = await self.db.execute(stmt_user)
+        user = res_user.scalar_one_or_none()
+
+        stmt_soc = select(SocietyModel).where(SocietyModel.id == membership.society_id)
+        res_soc = await self.db.execute(stmt_soc)
+        society = res_soc.scalar_one_or_none()
+
+        if user and society:
+            from app.authentication.models import AuthCredentialModel
+            stmt_c = select(AuthCredentialModel).where(AuthCredentialModel.user_id == user.user_id)
+            res_c = await self.db.execute(stmt_c)
+            cred = res_c.scalar_one_or_none()
+            if cred:
+                EmailService.send_membership_rejection_email(
+                    to_email=cred.identifier,
+                    name=f"{user.first_name} {user.last_name}",
+                    society_name=society.name,
+                    reason=reason
+                )
+
+        logger.info("membership.rejected", membership_id=str(membership_id), user_id=str(membership.user_id))
+        return membership
+
+
 class SocietyService:
     def __init__(self, db: AsyncSession):
         self.repo = SocietyRepository(db)
 
     async def create_society(self, data: SocietyCreate) -> SocietyModel:
-        # Check registration number uniqueness
         existing = await self.repo.get_society_by_reg_no(data.registration_no)
         if existing:
             raise HTTPException(
@@ -61,13 +221,11 @@ class SocietyService:
         return society
 
 
-
 class BuildingService:
     def __init__(self, db: AsyncSession):
         self.repo = SocietyRepository(db)
 
     async def create_building(self, society_id: uuid.UUID, data: BuildingCreate) -> BuildingModel:
-        # Verify society exists
         society = await self.repo.get_society(society_id)
         if not society:
             raise HTTPException(
@@ -101,20 +259,17 @@ class BuildingService:
         return building
 
 
-
 class FloorService:
     def __init__(self, db: AsyncSession):
         self.repo = SocietyRepository(db)
 
     async def create_floor(self, building_id: uuid.UUID, data: FloorCreate) -> FloorModel:
-        # Verify building exists
         building = await self.repo.get_building(building_id)
         if not building:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Parent building not found."
             )
-        # Verify floor number is unique in this building
         existing = await self.repo.get_floor_by_number(building_id, data.floor_number)
         if existing:
             raise HTTPException(
@@ -141,14 +296,12 @@ class UnitService:
         self.repo = SocietyRepository(db)
 
     async def create_unit(self, floor_id: uuid.UUID, data: UnitCreate) -> UnitModel:
-        # Verify floor exists
         floor = await self.repo.get_floor(floor_id)
         if not floor:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Parent floor not found."
             )
-        # Verify unit number is unique on this floor
         existing = await self.repo.get_unit_by_number(floor_id, data.unit_number)
         if existing:
             raise HTTPException(
@@ -182,7 +335,6 @@ class UnitService:
         return unit
 
 
-
 class ResidentService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -190,15 +342,13 @@ class ResidentService:
         self.user_repo = UserRepository(db)
 
     async def assign_resident(self, unit_id: uuid.UUID, data: ResidentAssign) -> UnitResidentModel:
-        # Verify unit exists
         unit = await self.repo.get_unit(unit_id)
         if not unit:
             raise HTTPException(
-                status_code=status.HTTP_444_NOT_FOUND if hasattr(status, 'HTTP_444_NOT_FOUND') else 404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Unit not found."
             )
             
-        # Verify user exists
         user = await self.user_repo.check_user_exist(data.user_id)
         if not user:
             raise HTTPException(
@@ -206,7 +356,6 @@ class ResidentService:
                 detail="User not found."
             )
             
-        # Check if already assigned
         existing = await self.repo.get_resident_link(unit_id, data.user_id)
         if existing:
             raise HTTPException(
@@ -234,7 +383,6 @@ class VehicleService:
         self.repo = SocietyRepository(db)
 
     async def register_vehicle(self, unit_id: uuid.UUID, data: VehicleRegister) -> VehicleModel:
-        # Verify unit exists
         unit = await self.repo.get_unit(unit_id)
         if not unit:
             raise HTTPException(
@@ -242,7 +390,6 @@ class VehicleService:
                 detail="Unit not found."
             )
             
-        # Verify registration number is unique
         existing = await self.repo.get_vehicle_by_reg_no(data.registration_number)
         if existing:
             raise HTTPException(
@@ -250,7 +397,6 @@ class VehicleService:
                 detail=f"Vehicle with registration number '{data.registration_number}' is already registered."
             )
             
-        # Verify resident exists if provided
         if data.resident_id:
             resident = await self.repo.get_resident(data.resident_id)
             if not resident:
@@ -280,7 +426,6 @@ class BulkProvisionService:
         self.repo = SocietyRepository(db)
 
     async def provision_society_structure(self, society_id: uuid.UUID, data: BulkProvisionRequest) -> List[BuildingModel]:
-        # Verify society exists
         society = await self.repo.get_society(society_id)
         if not society:
             raise HTTPException(
@@ -289,11 +434,7 @@ class BulkProvisionService:
             )
             
         buildings_created = []
-        
-        # Note: We rely on the caller wrapping this call in a transaction block
-        # (e.g. `async with db.begin()`) or we can manage it here.
         for b_data in data.buildings:
-            # 1. Create Building
             building = BuildingModel(
                 society_id=society_id,
                 name=b_data.name
@@ -301,7 +442,6 @@ class BulkProvisionService:
             self.db.add(building)
             await self.db.flush()
             
-            # 2. Create Floors (starting from 0 for Ground Floor)
             for floor_no in range(0, b_data.number_of_floors + 1):
                 floor_name = "Ground Floor" if floor_no == 0 else f"Floor {floor_no}"
                 floor = FloorModel(
@@ -312,9 +452,7 @@ class BulkProvisionService:
                 self.db.add(floor)
                 await self.db.flush()
                 
-                # 3. Create Units for this Floor
                 for unit_idx in range(1, b_data.units_per_floor + 1):
-                    # Format: Floor Number + 2 digit Unit index (e.g. 001, 101, 201)
                     unit_number = f"{floor_no}{unit_idx:02d}"
                     unit = UnitModel(
                         floor_id=floor.id,
