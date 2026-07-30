@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -161,7 +161,7 @@ async def platform_create_society(
 @router.post("/platform/societies/from-lead/{lead_id}", status_code=status.HTTP_201_CREATED)
 async def platform_create_society_from_lead(
     lead_id: uuid.UUID,
-    payload: Optional[PlatformCreateSocietyFromLeadRequest] = None,
+    payload: Optional[PlatformCreateSocietyFromLeadRequest] = Body(None),
     db: AsyncSession = Depends(get_db_session),
 ):
     """
@@ -186,6 +186,9 @@ async def platform_create_society_from_lead(
             }
         }
     except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.exception("platform.create_society_from_lead_failed", error=str(e))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
