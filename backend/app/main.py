@@ -1,12 +1,20 @@
 import uuid
 import time
+import os
 import structlog
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.database import engine, Base
 from app.core.logging_config import setup_logging
 from app.core.logging_context import set_logging_context, clear_logging_context
+
+# Ensure all SQLAlchemy models are imported for metadata registration
+import app.authentication.models  # noqa
+import app.societies.models       # noqa
+
 from app.authentication.routes import router as auth_router
 from app.societies.routes import router as societies_router
 from app.platform.routes import router as platform_router
@@ -15,11 +23,27 @@ from app.platform.routes import router as platform_router
 setup_logging(env=settings.ENV, log_level=settings.LOG_LEVEL)
 logger = structlog.get_logger(__name__)
 
-# Initialize modern FastAPI app with OpenAPI configurations
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    """
+    Application Lifespan Event:
+    Automatically creates missing DB tables on application startup.
+    """
+    logger.info("startup.database_schema_sync_started")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("startup.database_schema_sync_completed")
+    except Exception as e:
+        logger.exception("startup.database_schema_sync_failed", error=str(e))
+    yield
+
+# Initialize modern FastAPI app with OpenAPI configurations & lifespan
 app = FastAPI(
     title="Society Management System API",
     description="Enterprise API backend for society management and user authentication",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 @app.middleware("http")
@@ -56,8 +80,6 @@ async def logging_middleware(request: Request, call_next):
         )
         raise exc
 
-import os
-
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -85,4 +107,3 @@ app.include_router(platform_router, prefix="/api/v1")
 @app.get("/")
 def read_root():
     return {"message": "Society Management System Backend is running."}
-
