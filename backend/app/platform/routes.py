@@ -11,6 +11,7 @@ from app.platform.schemas import (
     RegisterSocietyLeadRequest,
     UpdateSocietyLeadStatusRequest,
     PlatformCreateSocietyRequest,
+    PlatformCreateSocietyFromLeadRequest,
     PlatformCreateSubscriptionRequest,
     PlatformCreateAdminRequest,
 )
@@ -139,7 +140,7 @@ async def platform_create_society(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Platform Admin Endpoint: Provision a new Society in the platform.
+    Platform Admin Endpoint: Provision a new Society in the platform manually.
     """
     try:
         async with db.begin():
@@ -151,6 +152,37 @@ async def platform_create_society(
                 "society_id": str(society.id),
                 "name": society.name,
                 "registration_no": society.registration_no,
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/platform/societies/from-lead/{lead_id}", status_code=status.HTTP_201_CREATED)
+async def platform_create_society_from_lead(
+    lead_id: uuid.UUID,
+    payload: Optional[PlatformCreateSocietyFromLeadRequest] = None,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Platform Admin Endpoint: ONE-CLICK Auto-Provisioning Workflow from Lead!
+    Maps Lead -> Creates Society -> Creates Subscription -> Provisions Primary Admin -> Sends Resend Activation Email.
+    """
+    try:
+        async with db.begin():
+            society, subscription, admin_res = await PlatformAdminService.create_society_from_lead(db, lead_id, payload)
+        return {
+            "success": True,
+            "message": "Society, Subscription, and Primary Admin successfully provisioned from Lead! Activation email dispatched via Resend.",
+            "data": {
+                "society_id": str(society.id),
+                "society_name": society.name,
+                "registration_no": society.registration_no,
+                "subscription_id": str(subscription.id),
+                "plan": subscription.plan,
+                "admin_user_id": admin_res["user_id"],
+                "admin_email": admin_res["email"],
+                "activation_token": admin_res["activation_token"],
             }
         }
     except ValueError as e:

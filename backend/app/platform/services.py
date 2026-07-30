@@ -1,6 +1,6 @@
 import uuid
 import secrets
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from app.platform.schemas import (
     RegisterSocietyLeadRequest,
     UpdateSocietyLeadStatusRequest,
     PlatformCreateSocietyRequest,
+    PlatformCreateSocietyFromLeadRequest,
     PlatformCreateSubscriptionRequest,
     PlatformCreateAdminRequest,
 )
@@ -96,6 +97,72 @@ class PlatformAdminService:
         await db.flush()
         logger.info("platform.society_created", society_id=str(society.id), name=society.name)
         return society
+
+    @classmethod
+    async def create_society_from_lead(
+        cls,
+        db: AsyncSession,
+        lead_id: uuid.UUID,
+        payload: Optional[PlatformCreateSocietyFromLeadRequest] = None
+    ) -> Tuple[SocietyModel, SubscriptionModel, dict]:
+        """
+        One-Click Provisioning Workflow:
+        Auto-maps Lead data -> Creates Society -> Creates Subscription -> Provisions Admin -> Sends Resend Email.
+        """
+        lead = await cls.get_society_lead_by_id(db, lead_id)
+
+        city_prefix = (lead.city[:3] if lead.city else "MUM").upper()
+        reg_no = (payload.registration_no if payload and payload.registration_no else f"RWA/{city_prefix}/{datetime.now().year}/{uuid.uuid4().hex[:4].upper()}")
+        address = (payload.address if payload and payload.address else f"{lead.city} (Address Verification Pending)")
+        state = (payload.state if payload and payload.state else "Maharashtra")
+        zipcode = (payload.zipcode if payload and payload.zipcode else "400000")
+
+        # 1. Create Society from Lead Mapping
+        soc_req = PlatformCreateSocietyRequest(
+            name=lead.organization_name,
+            registration_no=reg_no,
+            address=address,
+            city=lead.city,
+            state=state,
+            country="India",
+            zipcode=zipcode,
+            email=lead.email,
+            phone=lead.mobile,
+        )
+        society = await cls.create_society(db, soc_req)
+
+        # 2. Attach Subscription
+        expected_admins = lead.expected_admins or 5
+        sub_req = PlatformCreateSubscriptionRequest(
+            society_id=society.id,
+            plan="GOLD",
+            valid_months=12,
+            max_admins=max(expected_admins, 5),
+            max_storage_gb=20,
+        )
+        subscription = await cls.create_subscription(db, sub_req)
+
+        # 3. Parse Contact Name
+        names = lead.primary_contact_name.strip().split(" ", 1)
+        first_name = names[0]
+        last_name = names[1] if len(names) > 1 else "Admin"
+
+        # 4. Provision Admin Account
+        admin_req = PlatformCreateAdminRequest(
+            society_id=society.id,
+            first_name=first_name,
+            last_name=last_name,
+            email=lead.email,
+            mobile=lead.mobile,
+        )
+        admin_res = await cls.create_primary_admin(db, admin_req)
+
+        # 5. Mark Lead Status as Provisioned
+        lead.status = "provisioned"
+        await db.flush()
+
+        logger.info("platform.society_auto_provisioned_from_lead", lead_id=str(lead.id), society_id=str(society.id))
+        return society, subscription, admin_res
 
     @classmethod
     async def create_subscription(cls, db: AsyncSession, payload: PlatformCreateSubscriptionRequest) -> SubscriptionModel:

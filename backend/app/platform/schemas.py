@@ -28,6 +28,12 @@ class PlatformCreateSocietyRequest(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
 
+class PlatformCreateSocietyFromLeadRequest(BaseModel):
+    registration_no: Optional[str] = Field(default=None, json_schema_extra={"example": "RWA/MUM/2026/8921"})
+    address: Optional[str] = Field(default=None, json_schema_extra={"example": "123 Palm Avenue, Bandra West"})
+    state: Optional[str] = Field(default="Maharashtra", json_schema_extra={"example": "Maharashtra"})
+    zipcode: Optional[str] = Field(default="000000", json_schema_extra={"example": "400050"})
+
 class PlatformCreateSubscriptionRequest(BaseModel):
     society_id: uuid.UUID
     plan: str = Field(default="GOLD", json_schema_extra={"example": "GOLD"})

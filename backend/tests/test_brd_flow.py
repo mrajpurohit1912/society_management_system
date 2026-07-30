@@ -114,3 +114,29 @@ def test_complete_brd_enterprise_flow():
     approve_res = client.post(f"/api/v1/societies/{society_id}/membership/{membership_id}/approve", headers=admin_headers)
     assert approve_res.status_code == 200
     assert approve_res.json()["data"]["status"] == "approved"
+
+
+def test_one_click_provision_society_from_lead():
+    # 1. Create Lead
+    lead_email = f"lead_{uuid.uuid4().hex[:6]}@resend.dev"
+    lead_res = client.post("/api/v1/register-society", json={
+        "organization_name": "Grand View Apartments",
+        "primary_contact_name": "Rohan Sharma",
+        "email": lead_email,
+        "mobile": "+919888877777",
+        "city": "Pune",
+        "expected_flats": 50,
+        "expected_admins": 4,
+        "comments": "One-click test lead"
+    })
+    assert lead_res.status_code == 201
+    lead_id = lead_res.json()["data"]["lead_id"]
+
+    # 2. One-click Provisioning from Lead
+    auto_res = client.post(f"/api/v1/platform/societies/from-lead/{lead_id}")
+    assert auto_res.status_code == 201
+    data = auto_res.json()["data"]
+    assert data["society_name"] == "Grand View Apartments"
+    assert data["plan"] == "GOLD"
+    assert data["admin_email"] == lead_email
+    assert data["activation_token"] is not None
