@@ -53,11 +53,19 @@ async def safe_transaction(db: AsyncSession):
             yield
 
 
-# --- Membership Request Schemas ---
+from pydantic import BaseModel, Field, field_validator
+
 class RequestMembershipPayload(BaseModel):
     society_id: uuid.UUID
     unit_id: Optional[uuid.UUID] = None
     role: Optional[str] = Field(default="resident", json_schema_extra={"example": "resident"})
+
+    @field_validator("unit_id", mode="before")
+    @classmethod
+    def empty_unit_id_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
 
 class RejectMembershipPayload(BaseModel):
     reason: Optional[str] = None
