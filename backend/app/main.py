@@ -5,6 +5,7 @@ import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import engine, Base
@@ -27,12 +28,27 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app_instance: FastAPI):
     """
     Application Lifespan Event:
-    Automatically creates missing DB tables on application startup.
+    Automatically creates missing DB tables and syncs missing columns on application startup.
     """
     logger.info("startup.database_schema_sync_started")
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            
+            # Ensure missing columns on pre-existing PostgreSQL tables are added safely if absent
+            alter_queries = [
+                "ALTER TABLE user_society_roles ADD COLUMN IF NOT EXISTS unit_id UUID REFERENCES units(id) ON DELETE SET NULL;",
+                "ALTER TABLE user_society_roles ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'approved';",
+                "ALTER TABLE user_society_roles ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(user_id) ON DELETE SET NULL;",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';",
+            ]
+            for query in alter_queries:
+                try:
+                    await conn.execute(text(query))
+                except Exception as q_err:
+                    logger.warning("startup.alter_column_warning", query=query, error=str(q_err))
+
         logger.info("startup.database_schema_sync_completed")
     except Exception as e:
         logger.exception("startup.database_schema_sync_failed", error=str(e))
