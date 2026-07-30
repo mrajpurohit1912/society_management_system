@@ -29,6 +29,8 @@ class PlatformCreateSocietyRequest(BaseModel):
     phone: Optional[str] = None
 
 class PlatformCreateSocietyFromLeadRequest(BaseModel):
+    plan: Optional[str] = Field(default="GOLD", json_schema_extra={"example": "GOLD"})
+    valid_months: Optional[int] = Field(default=12, json_schema_extra={"example": 12})
     registration_no: Optional[str] = Field(default=None, json_schema_extra={"example": "RWA/MUM/2026/8921"})
     address: Optional[str] = Field(default=None, json_schema_extra={"example": "123 Palm Avenue, Bandra West"})
     state: Optional[str] = Field(default="Maharashtra", json_schema_extra={"example": "Maharashtra"})

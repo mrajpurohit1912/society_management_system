@@ -107,7 +107,7 @@ class PlatformAdminService:
     ) -> Tuple[SocietyModel, SubscriptionModel, dict]:
         """
         One-Click Provisioning Workflow:
-        Auto-maps Lead data -> Creates Society -> Creates Subscription -> Provisions Admin -> Sends Resend Email.
+        Auto-maps Lead data -> Creates Society -> Creates Subscription -> Provisions Primary Admin -> Sends Resend Activation Email.
         """
         lead = await cls.get_society_lead_by_id(db, lead_id)
 
@@ -116,6 +116,8 @@ class PlatformAdminService:
         address = (payload.address if payload and payload.address else f"{lead.city} (Address Verification Pending)")
         state = (payload.state if payload and payload.state else "Maharashtra")
         zipcode = (payload.zipcode if payload and payload.zipcode else "400000")
+        plan = (payload.plan if payload and payload.plan else "GOLD")
+        valid_months = (payload.valid_months if payload and payload.valid_months else 12)
 
         # 1. Create Society from Lead Mapping
         soc_req = PlatformCreateSocietyRequest(
@@ -131,12 +133,12 @@ class PlatformAdminService:
         )
         society = await cls.create_society(db, soc_req)
 
-        # 2. Attach Subscription
+        # 2. Attach Subscription (Uses configured plan or defaults to GOLD)
         expected_admins = lead.expected_admins or 5
         sub_req = PlatformCreateSubscriptionRequest(
             society_id=society.id,
-            plan="GOLD",
-            valid_months=12,
+            plan=plan,
+            valid_months=valid_months,
             max_admins=max(expected_admins, 5),
             max_storage_gb=20,
         )
@@ -161,7 +163,7 @@ class PlatformAdminService:
         lead.status = "provisioned"
         await db.flush()
 
-        logger.info("platform.society_auto_provisioned_from_lead", lead_id=str(lead.id), society_id=str(society.id))
+        logger.info("platform.society_auto_provisioned_from_lead", lead_id=str(lead.id), society_id=str(society.id), plan=plan)
         return society, subscription, admin_res
 
     @classmethod
