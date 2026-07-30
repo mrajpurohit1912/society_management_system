@@ -1,3 +1,5 @@
+import uuid
+from typing import Optional
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,7 @@ from sqlalchemy import func
 from app.core.database import get_db_session
 from app.platform.schemas import (
     RegisterSocietyLeadRequest,
+    UpdateSocietyLeadStatusRequest,
     PlatformCreateSocietyRequest,
     PlatformCreateSubscriptionRequest,
     PlatformCreateAdminRequest,
@@ -42,6 +45,92 @@ async def register_society_lead(
     except Exception as e:
         logger.exception("platform.register_lead_failed", error=str(e))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/platform/leads")
+async def list_platform_leads(
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Platform Admin Endpoint: List all incoming society registration inquiries.
+    """
+    leads = await PlatformAdminService.list_society_leads(db, status_filter=status)
+    return {
+        "success": True,
+        "count": len(leads),
+        "data": [
+            {
+                "lead_id": str(lead.id),
+                "organization_name": lead.organization_name,
+                "primary_contact_name": lead.primary_contact_name,
+                "email": lead.email,
+                "mobile": lead.mobile,
+                "city": lead.city,
+                "expected_flats": lead.expected_flats,
+                "expected_admins": lead.expected_admins,
+                "comments": lead.comments,
+                "status": lead.status,
+                "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            }
+            for lead in leads
+        ]
+    }
+
+
+@router.get("/platform/leads/{lead_id}")
+async def get_platform_lead_details(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Platform Admin Endpoint: Get full details of a specific society registration lead.
+    """
+    try:
+        lead = await PlatformAdminService.get_society_lead_by_id(db, lead_id)
+        return {
+            "success": True,
+            "data": {
+                "lead_id": str(lead.id),
+                "organization_name": lead.organization_name,
+                "primary_contact_name": lead.primary_contact_name,
+                "email": lead.email,
+                "mobile": lead.mobile,
+                "city": lead.city,
+                "expected_flats": lead.expected_flats,
+                "expected_admins": lead.expected_admins,
+                "comments": lead.comments,
+                "status": lead.status,
+                "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.patch("/platform/leads/{lead_id}")
+async def update_platform_lead_status(
+    lead_id: uuid.UUID,
+    payload: UpdateSocietyLeadStatusRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Platform Admin Endpoint: Update lead status (e.g. lead_created, in_discussion, provisioned, rejected).
+    """
+    try:
+        async with db.begin():
+            lead = await PlatformAdminService.update_society_lead_status(db, lead_id, payload)
+        return {
+            "success": True,
+            "message": "Lead status updated successfully",
+            "data": {
+                "lead_id": str(lead.id),
+                "organization_name": lead.organization_name,
+                "status": lead.status,
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.post("/platform/societies", status_code=status.HTTP_201_CREATED)

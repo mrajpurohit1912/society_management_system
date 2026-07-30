@@ -1,5 +1,6 @@
 import uuid
 import secrets
+from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,7 @@ from app.authentication.models import UserModel, AuthCredentialModel, Activation
 from app.core.email_service import EmailService
 from app.platform.schemas import (
     RegisterSocietyLeadRequest,
+    UpdateSocietyLeadStatusRequest,
     PlatformCreateSocietyRequest,
     PlatformCreateSubscriptionRequest,
     PlatformCreateAdminRequest,
@@ -46,8 +48,34 @@ class PlatformAdminService:
         return lead
 
     @classmethod
+    async def list_society_leads(cls, db: AsyncSession, status_filter: Optional[str] = None) -> List[SocietyLeadModel]:
+        stmt = select(SocietyLeadModel).order_by(SocietyLeadModel.created_at.desc())
+        if status_filter:
+            stmt = stmt.where(SocietyLeadModel.status == status_filter)
+        res = await db.execute(stmt)
+        return res.scalars().all()
+
+    @classmethod
+    async def get_society_lead_by_id(cls, db: AsyncSession, lead_id: uuid.UUID) -> SocietyLeadModel:
+        stmt = select(SocietyLeadModel).where(SocietyLeadModel.id == lead_id)
+        res = await db.execute(stmt)
+        lead = res.scalar_one_or_none()
+        if not lead:
+            raise ValueError(f"Society lead with ID '{lead_id}' not found")
+        return lead
+
+    @classmethod
+    async def update_society_lead_status(cls, db: AsyncSession, lead_id: uuid.UUID, payload: UpdateSocietyLeadStatusRequest) -> SocietyLeadModel:
+        lead = await cls.get_society_lead_by_id(db, lead_id)
+        lead.status = payload.status
+        if payload.comments:
+            lead.comments = f"{lead.comments or ''}\n[Update]: {payload.comments}".strip()
+        await db.flush()
+        logger.info("platform.lead_status_updated", lead_id=str(lead.id), status=payload.status)
+        return lead
+
+    @classmethod
     async def create_society(cls, db: AsyncSession, payload: PlatformCreateSocietyRequest) -> SocietyModel:
-        # Check uniqueness of registration_no
         stmt = select(SocietyModel).where(SocietyModel.registration_no == payload.registration_no)
         res = await db.execute(stmt)
         if res.scalar_one_or_none():
@@ -96,31 +124,27 @@ class PlatformAdminService:
 
     @classmethod
     async def create_primary_admin(cls, db: AsyncSession, payload: PlatformCreateAdminRequest) -> dict:
-        # Check if email is already in use
         stmt = select(AuthCredentialModel).where(AuthCredentialModel.identifier == payload.email)
         res = await db.execute(stmt)
         if res.scalar_one_or_none():
             raise ValueError(f"Email '{payload.email}' is already registered in the system")
 
-        # Verify society exists
         stmt_soc = select(SocietyModel).where(SocietyModel.id == payload.society_id)
         res_soc = await db.execute(stmt_soc)
         society = res_soc.scalar_one_or_none()
         if not society:
             raise ValueError(f"Society ID '{payload.society_id}' not found")
 
-        # Create Admin User in ACTIVATION_PENDING status
         user = UserModel(
             first_name=payload.first_name,
             last_name=payload.last_name,
             role=UserRole.SOCIETY_ADMIN.value,
             status=UserAccountStatus.ACTIVATION_PENDING.value,
-            email_verified=True,  # Pre-verified by Platform Admin
+            email_verified=True,
         )
         db.add(user)
         await db.flush()
 
-        # Add auth credential (password will be set during activation)
         credential = AuthCredentialModel(
             user_id=user.user_id,
             provider="email",
@@ -129,7 +153,6 @@ class PlatformAdminService:
         )
         db.add(credential)
 
-        # Link user role to society
         user_soc_role = UserSocietyRoleModel(
             user_id=user.user_id,
             society_id=payload.society_id,
@@ -138,7 +161,6 @@ class PlatformAdminService:
         )
         db.add(user_soc_role)
 
-        # Generate activation token (valid for 48 hours)
         raw_token = secrets.token_urlsafe(32)
         expiry = datetime.now(timezone.utc) + timedelta(hours=48)
         activation_token = ActivationTokenModel(
@@ -150,7 +172,6 @@ class PlatformAdminService:
         db.add(activation_token)
         await db.flush()
 
-        # Send activation email via Resend Service
         EmailService.send_admin_activation_email(
             to_email=payload.email,
             name=f"{payload.first_name} {payload.last_name}",

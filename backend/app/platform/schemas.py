@@ -13,6 +13,10 @@ class RegisterSocietyLeadRequest(BaseModel):
     expected_admins: Optional[int] = Field(default=3, json_schema_extra={"example": 3})
     comments: Optional[str] = None
 
+class UpdateSocietyLeadStatusRequest(BaseModel):
+    status: str = Field(..., json_schema_extra={"example": "in_discussion"})
+    comments: Optional[str] = None
+
 class PlatformCreateSocietyRequest(BaseModel):
     name: str = Field(..., json_schema_extra={"example": "Green Valley Residency"})
     registration_no: str = Field(..., json_schema_extra={"example": "RWA/MUM/2026/8921"})
