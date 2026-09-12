@@ -924,6 +924,7 @@ REMOVED
 
 ---
 
+
 # API Endpoints
 
 ## Public
@@ -1023,3 +1024,189 @@ This architecture follows enterprise SaaS principles by clearly separating:
 5. **Subscription Management** (plan enforcement and feature availability)
 
 The result is a secure, scalable, multi-tenant platform that minimizes operational effort after onboarding while allowing society administrators to independently manage and configure their societies.
+
+
+
+1. User Login Dashboard (Firstime user)
+    ┌─────────────────────────────────────────────────────────┐                                                                                                        
+    │ 1. JOIN YOUR SOCIETY                                    │                                                                                                        
+    │ Search: [ Shashikant APT                       ▼ ]      │                                                                                                        
+    ├─────────────────────────────────────────────────────────┤                                                                                                        
+    │ 2. SELECT YOUR UNIT LOCATION                            │                                                                                                        
+    │ Building / Wing:  [ a_wing                     ▼ ]      │                                                                                                        
+    │ Floor:            [ Floor 1                    ▼ ]      │                                                                                                        
+    │ Flat Number:      [ Flat 101                   ▼ ]      │                                                                                                        
+    │                                                         │                                                                                                        
+    │ Ownership Type:   (•) Owner   ( ) Tenant                │                                                                                                        
+    ├─────────────────────────────────────────────────────────┤                                                                                                        
+    │                   [ SUBMIT REQUEST ]                    │                                                                                                        
+    └─────────────────────────────────────────────────────────┘    
+
+      ##### ⚙️ How Frontend Code Executes This:
+  
+  1. When user selects a_wing, Frontend calls GET /buildings/{id}/floors.
+  2. When user selects Floor 1, Frontend calls GET /floors/{id}/units.   
+  3. When user clicks "Submit Request", Frontend grabs the UUID of Flat 101 behind the scenes and sends:
+    {
+      "society_id": "b608d953-5e22-4863-b81b-7cd9c7feff5b",
+      "unit_id": "fedfbe4a-f477-402f-8716-c0b6f89d7794",   
+      "role": "resident"
+    }
+
+  #### 💻 B. The Society Admin's Web Dashboard UI
+  
+    ┌────────────────────────────────────────────────────────────────────────┐
+    │ PENDING RESIDENT REQUESTS (1)                                          │
+    ├────────────────────────────────────────────────────────────────────────┤
+    │ Resident Name : Darklight Day                                          │
+    │ Email         : darklightday81@gmail.com                               │
+    │ Requested Unit: Wing A -> Floor 1 -> Flat 101 (Owner)                  │
+    │ Status        : PENDING APPROVAL                                       │
+    │                                                                        │
+    │                 [ APPROVE & ASSIGN ]    [ REJECT ]                     │
+    └────────────────────────────────────────────────────────────────────────┘
+    
+  ##### ⚙️ How Frontend Code Executes This:
+  
+  1. The Admin clicks "APPROVE & ASSIGN".
+  2. Frontend calls POST /societies/{society_id}/membership/{membership_id}/approve.
+  3. The backend updates membership to approved, assigns the user to Flat 101, and sends a Resend Email Notification to the resident! 📧 
+
+
+
+  ##### if User has to be associated with a particuler flat(unit id) the follow the below flow
+
+
+  ### 1️⃣ Who Performs This Flow: User or Admin?                                                                                                                        
+                                                                                                                                                                       
+  In enterprise society platforms, BOTH roles participate in a smooth 2-step process:                                                                                  
+                                                                                                                                                                       
+  1. The Resident (User): Selects their flat during signup (Self-Service).                                                                                             
+  2. The Society Admin: Verifies & Approves the selection (Access Control & Security).                                                                                 
+                                                                                                                                                                       
+  │ Why this design?                                                                                                                                                   
+  │ If the Admin had to manually type and assign flats for 500 residents, it would be overwhelming. Having residents pick their flat from a dropdown list reduces the  
+  │ Admin's job to a single click of an "Approve" button!                                                                                                              
+  ──────                                                                                                                                                               
+  ### 2️⃣ How It Works on the Frontend (Step-by-Step UI Journey)                                                                                                        
+                                                                                                                                                                       
+  #### 📱 A. The Resident's Mobile / Web App UI                                                                                                                        
+                                                                                                                                                                       
+    ┌─────────────────────────────────────────────────────────┐                                                                                                        
+    │ 1. JOIN YOUR SOCIETY                                    │                                                                                                        
+    │ Search: [ Shashikant APT                       ▼ ]      │                                                                                                        
+    ├─────────────────────────────────────────────────────────┤                                                                                                        
+    │ 2. SELECT YOUR UNIT LOCATION                            │                                                                                                        
+    │ Building / Wing:  [ a_wing                     ▼ ]      │                                                                                                        
+    │ Floor:            [ Floor 1                    ▼ ]      │                                                                                                        
+    │ Flat Number:      [ Flat 101                   ▼ ]      │                                                                                                        
+    │                                                         │                                                                                                        
+    │ Ownership Type:   (•) Owner   ( ) Tenant                │                                                                                                        
+    ├─────────────────────────────────────────────────────────┤                                                                                                        
+    │                   [ SUBMIT REQUEST ]                    │                                                                                                        
+    └─────────────────────────────────────────────────────────┘                                                                                                        
+                                                                                                                                                                       
+  ##### ⚙️ How Frontend Code Executes This:                                                                                                                            
+                                                                                                                                                                       
+  1. When user selects a_wing, Frontend calls GET /buildings/{id}/floors.                                                                                              
+  2. When user selects Floor 1, Frontend calls GET /floors/{id}/units.                                                                                                 
+  3. When user clicks "Submit Request", Frontend grabs the UUID of Flat 101 behind the scenes and sends:                                                               
+    {                                                                                                                                                                  
+      "society_id": "b608d953-5e22-4863-b81b-7cd9c7feff5b",                                                                                                            
+      "unit_id": "fedfbe4a-f477-402f-8716-c0b6f89d7794",                                                                                                               
+      "role": "resident"                                                                                                                                               
+    }                                                                                                                                                                  
+                                                                                                                                                                       
+  ──────                                                                                                                                                               
+  #### 💻 B. The Society Admin's Web Dashboard UI                                                                                                                      
+                                                                                                                                                                       
+    ┌────────────────────────────────────────────────────────────────────────┐                                                                                         
+    │ PENDING RESIDENT REQUESTS (1)                                          │                                                                                         
+    ├────────────────────────────────────────────────────────────────────────┤                                                                                         
+    │ Resident Name : Darklight Day                                          │                                                                                         
+    │ Email         : darklightday81@gmail.com                               │                                                                                         
+    │ Requested Unit: Wing A -> Floor 1 -> Flat 101 (Owner)                  │                                                                                         
+    │ Status        : PENDING APPROVAL                                       │                                                                                         
+    │                                                                        │                                                                                         
+    │                 [ APPROVE & ASSIGN ]    [ REJECT ]                     │                                                                                         
+    └────────────────────────────────────────────────────────────────────────┘                                                                                         
+                                                                                                                                                                       
+  ##### ⚙️ How Frontend Code Executes This:                                                                                                                            
+                                                                                                                                                                       
+  1. The Admin clicks "APPROVE & ASSIGN".                                                                                                                              
+  2. Frontend calls POST /societies/{society_id}/membership/{membership_id}/approve.                                                                                   
+  3. The backend updates membership to approved, assigns the user to Flat 101, and sends a Resend Email Notification to the resident! 📧                               
+  ──────                                                                                                                                                               
+  ### 🎯 Summary                                                                                                                                                       
+                                                                                                                                                                       
+  • Resident: Picks their flat from clean cascading dropdowns (Wing → Floor → Flat).                                                                                   
+  • Admin: Clicks Approve to grant official access.                                                                                                                    
+
+────────────────────────────────────────────────────────────
+> okay and if Admin only has to perform the whole flow then how it will work in frontend from the Admin side
+
+▸ Thought for 6s, 687 tokens
+  Clarifying Admin UI Flow
+  If the Admin performs 100% of the unit assignment flow, here is how the Admin Portal UI works step-by-step:                                                          
+  ──────                                                                                                                                                               
+  ### 💻 Admin Portal UI Layout & Experience                                                                                                                           
+                                                                                                                                                                       
+  In the Admin Dashboard, there is a dedicated page called "Resident Directory & Unit Allocations".                                                                    
+                                                                                                                                                                       
+  #### Screen 1: Unassigned Residents Table                                                                                                                            
+                                                                                                                                                                       
+  The Admin sees a table of all approved or pending residents who don't have a flat assigned yet:                                                                      
+                                                                                                                                                                       
+    ┌──────────────────────────────────────────────────────────────────────────────────────────┐                                                                       
+    │ UNASSIGNED RESIDENTS (Waiting for Flat Allocation)                                        │                                                                      
+    ├──────────────────┬──────────────────────────┬─────────────────┬──────────────────────────┤                                                                       
+    │ RESIDENT NAME    │ EMAIL                    │ JOIN DATE       │ ACTION                   │                                                                       
+    ├──────────────────┼──────────────────────────┼─────────────────┼──────────────────────────┤                                                                       
+    │ Darklight Day    │ darklightday81@gmail.com │ 30 July 2026    │ [ 🏠 Assign to Unit ]    │                                                                       
+    │ Rohan Sharma     │ rohan@example.com        │ 30 July 2026    │ [ 🏠 Assign to Unit ]    │                                                                       
+    └──────────────────┴──────────────────────────┴─────────────────┴──────────────────────────┘                                                                       
+    ──────                                                                                                                                                             
+  #### Screen 2: Assign Unit Modal (Opens when Admin clicks "[ 🏠 Assign to Unit ]")                                                                                   
+                                                                                                                                                                       
+  A clean popup modal appears over the dashboard:                                                                                                                      
+                                                                                                                                                                       
+    ┌──────────────────────────────────────────────────────────────────────────────────────────┐                                                                       
+    │ 🏠 ASSIGN RESIDENT TO FLAT UNIT                                                          │                                                                       
+    ├──────────────────────────────────────────────────────────────────────────────────────────┤                                                                       
+    │ Resident: Darklight Day (darklightday81@gmail.com)                                       │                                                                       
+    │                                                                                          │                                                                       
+    │ 1. Select Building/Wing:  [ a_wing                                              ▼ ]      │
+    │ 2. Select Floor:          [ Floor 1 (Floors 1-3)                                ▼ ]      │
+    │ 3. Select Flat / Unit:    [ Flat 101 (Vacant)                                   ▼ ]      │
+    │                                                                                          │
+    │ Occupancy Type:           (•) Owner   ( ) Tenant                                     │
+    │ Set as Primary Contact:   [x] Yes, Primary Resident                              │
+    │                                                                                          │
+    │                           [ CANCEL ]    [ 🚀 CONFIRM & SAVE ALLOCATION ]                 │
+    └──────────────────────────────────────────────────────────────────────────────────────────┘
+    ──────
+  ### ⚙️ What Frontend Code Executes Behind the Scenes
+  
+  When the Admin clicks "[ 🚀 CONFIRM & SAVE ALLOCATION ]", the frontend executes 2 API calls in 1 second:
+  
+  #### Call 1: Binds User to the Flat Unit
+  
+    POST /api/v1/societies/{society_id}/units/{unit_id}/residents
+    Content-Type: application/json
+  
+    {
+      "user_id": "8b83f901-89dd-40d7-9d82-0586949e03e2",
+      "ownership_type": "owner",
+      "is_primary": true
+    }
+  
+  #### Call 2: Approves Membership & Triggers Resend Email
+  
+    POST /api/v1/societies/{society_id}/membership/{membership_id}/approve
+    ──────
+  ### 🎉 Result on the Screen
+  
+  1. The modal closes automatically.
+  2. A green success toast notification appears:
+  "Darklight Day successfully assigned to Wing A - Flat 101! Notification email sent."
+  3. The resident moves from the "Unassigned List" to the "Flat 101 Occupants List".

@@ -53,3 +53,8 @@ ehthumbs.db
 todo.md
 .agent
 docs
+
+# Node / Frontend                                                                                                                                                              
+node_modules/                                                                                                                                                                  
+.next/        
+
