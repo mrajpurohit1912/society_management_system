@@ -137,6 +137,21 @@ class SocietyRepository:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def list_all_units_in_society(
+        self, society_id: uuid.UUID, building_id: Optional[uuid.UUID] = None
+    ) -> List[UnitModel]:
+        query = (
+            select(UnitModel)
+            .join(FloorModel, UnitModel.floor_id == FloorModel.id)
+            .join(BuildingModel, FloorModel.building_id == BuildingModel.id)
+            .where(BuildingModel.society_id == society_id)
+            .order_by(UnitModel.unit_number)
+        )
+        if building_id:
+            query = query.where(BuildingModel.id == building_id)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
     # --- Resident Operations ---
     async def assign_resident(self, unit_id: uuid.UUID, data) -> UnitResidentModel:
         resident = UnitResidentModel(

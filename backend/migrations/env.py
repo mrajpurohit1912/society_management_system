@@ -15,7 +15,11 @@ from app.authentication.models import (
     RefreshTokenModel,
     ActivationTokenModel,
 )
-from app.payments.models import PaymentModel
+from app.payments.models import (
+    PaymentModel,
+    MaintenanceInvoiceModel,
+    PaymentReceiptModel,
+)
 from app.societies.models import (
     SocietyModel,
     BuildingModel,
