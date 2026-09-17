@@ -1,12 +1,29 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 from app.societies.models import SocietyStatus, UnitType, UnitStatus, ResidencyType, ResidentStatus, VehicleType, SocietyRole
 
 # --- User & Base Config ---
 class BaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+# --- Membership Schemas ---
+class RequestMembershipPayload(BaseModel):
+    society_id: uuid.UUID
+    unit_id: Optional[uuid.UUID] = None
+    role: Optional[str] = Field(default="resident", json_schema_extra={"example": "resident"})
+
+    @field_validator("unit_id", mode="before")
+    @classmethod
+    def empty_unit_id_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
+class RejectMembershipPayload(BaseModel):
+    reason: Optional[str] = None
+
 
 # --- Society Schemas ---
 class SocietyCreate(BaseModel):

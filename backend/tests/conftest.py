@@ -19,13 +19,20 @@ TestSessionLocal = sessionmaker(
 
 @pytest.fixture(scope="function", autouse=True)
 async def setup_test_database():
+    app.dependency_overrides[get_db_session] = override_get_db_session
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    app.dependency_overrides[get_db_session] = override_get_db_session
 
 async def override_get_db_session():
+    async with TestSessionLocal() as session:
+        yield session
+
+@pytest.fixture
+async def db_session():
     async with TestSessionLocal() as session:
         yield session
 

@@ -11,7 +11,8 @@ from app.societies.services import (
     UnitService,
     ResidentService,
     VehicleService,
-    BulkProvisionService
+    BulkProvisionService,
+    MembershipService,
 )
 from app.societies.schemas import (
     SocietyCreate,
@@ -285,6 +286,7 @@ async def test_register_vehicle_success(mock_repo_cls):
 @patch("app.societies.services.SocietyRepository")
 async def test_provision_society_structure_success(mock_repo_cls):
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
     mock_repo = AsyncMock()
     mock_repo.get_society.return_value = MagicMock()
     mock_repo_cls.return_value = mock_repo
@@ -300,3 +302,125 @@ async def test_provision_society_structure_success(mock_repo_cls):
     result = await service.provision_society_structure(soc_id, payload)
     assert len(result) == 1
     assert result[0].name == "Tower A"
+
+
+# --- Membership Service Tests ---
+
+@pytest.mark.asyncio
+@patch("app.societies.services.SocietyRepository")
+async def test_request_membership_success(mock_repo_cls):
+    mock_db = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_repo.get_society.return_value = MagicMock()
+    mock_repo.get_unit.return_value = MagicMock()
+    mock_repo.get_membership.return_value = None
+    mock_mem = MagicMock()
+    mock_repo.create_membership.return_value = mock_mem
+    mock_repo_cls.return_value = mock_repo
+
+    service = MembershipService(mock_db)
+    u_id = uuid.uuid4()
+    s_id = uuid.uuid4()
+    unit_id = uuid.uuid4()
+
+    result = await service.request_membership(user_id=u_id, society_id=s_id, unit_id=unit_id)
+    assert result == mock_mem
+    mock_repo.get_society.assert_called_once_with(s_id)
+    mock_repo.get_unit.assert_called_once_with(unit_id)
+    mock_repo.create_membership.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("app.societies.services.SocietyRepository")
+async def test_request_membership_society_not_found(mock_repo_cls):
+    mock_db = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_repo.get_society.return_value = None
+    mock_repo_cls.return_value = mock_repo
+
+    service = MembershipService(mock_db)
+    with pytest.raises(HTTPException) as exc:
+        await service.request_membership(user_id=uuid.uuid4(), society_id=uuid.uuid4())
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+@patch("app.societies.services.SocietyRepository")
+async def test_request_membership_already_approved(mock_repo_cls):
+    mock_db = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_repo.get_society.return_value = MagicMock()
+    mock_repo.get_membership.return_value = MagicMock(status="approved")
+    mock_repo_cls.return_value = mock_repo
+
+    service = MembershipService(mock_db)
+    with pytest.raises(HTTPException) as exc:
+        await service.request_membership(user_id=uuid.uuid4(), society_id=uuid.uuid4())
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+@patch("app.core.email_service.EmailService.send_membership_approval_email")
+@patch("app.societies.services.UserRepository")
+@patch("app.societies.services.SocietyRepository")
+async def test_approve_membership_success(mock_repo_cls, mock_user_repo_cls, mock_email):
+    mock_db = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_user_repo = AsyncMock()
+
+    mem_id = uuid.uuid4()
+    u_id = uuid.uuid4()
+    s_id = uuid.uuid4()
+    mock_mem = MagicMock(id=mem_id, user_id=u_id, society_id=s_id, unit_id=None)
+    mock_repo.get_membership_by_id.return_value = mock_mem
+    mock_user = MagicMock(user_id=u_id, first_name="John", last_name="Doe")
+    mock_user_repo.check_user_exist.return_value = mock_user
+    mock_soc = MagicMock(name="Palm Heights")
+    mock_repo.get_society.return_value = mock_soc
+    mock_cred = MagicMock(identifier="john@example.com")
+    mock_user_repo.get_user_credentials.return_value = [mock_cred]
+
+    mock_repo_cls.return_value = mock_repo
+    mock_user_repo_cls.return_value = mock_user_repo
+
+    service = MembershipService(mock_db)
+    admin_id = uuid.uuid4()
+    result = await service.approve_membership(mem_id, approved_by_user_id=admin_id)
+
+    assert result == mock_mem
+    mock_repo.update_membership.assert_called_once_with(mock_mem, status="approved", approved_by=admin_id)
+    mock_email.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("app.core.email_service.EmailService.send_membership_rejection_email")
+@patch("app.societies.services.UserRepository")
+@patch("app.societies.services.SocietyRepository")
+async def test_reject_membership_success(mock_repo_cls, mock_user_repo_cls, mock_email):
+    mock_db = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_user_repo = AsyncMock()
+
+    mem_id = uuid.uuid4()
+    u_id = uuid.uuid4()
+    s_id = uuid.uuid4()
+    mock_mem = MagicMock(id=mem_id, user_id=u_id, society_id=s_id)
+    mock_repo.get_membership_by_id.return_value = mock_mem
+    mock_user = MagicMock(user_id=u_id, first_name="John", last_name="Doe")
+    mock_user_repo.check_user_exist.return_value = mock_user
+    mock_soc = MagicMock(name="Palm Heights")
+    mock_repo.get_society.return_value = mock_soc
+    mock_cred = MagicMock(identifier="john@example.com")
+    mock_user_repo.get_user_credentials.return_value = [mock_cred]
+
+    mock_repo_cls.return_value = mock_repo
+    mock_user_repo_cls.return_value = mock_user_repo
+
+    service = MembershipService(mock_db)
+    admin_id = uuid.uuid4()
+    result = await service.reject_membership(mem_id, approved_by_user_id=admin_id, reason="Incomplete docs")
+
+    assert result == mock_mem
+    mock_repo.update_membership.assert_called_once_with(mock_mem, status="rejected", approved_by=admin_id)
+    mock_email.assert_called_once()
+

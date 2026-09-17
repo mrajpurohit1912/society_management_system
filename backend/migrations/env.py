@@ -9,9 +9,24 @@ from alembic import context
 # 1. Import your unified Base and all feature models to register metadata
 from app.core.database import Base
 from app.core.database import settings
-from app.authentication.models import UserModel, AuthCredentialModel, RefreshTokenModel
+from app.authentication.models import (
+    UserModel,
+    AuthCredentialModel,
+    RefreshTokenModel,
+    ActivationTokenModel,
+)
 from app.payments.models import PaymentModel
-from app.societies.models import SocietyModel, BuildingModel, FloorModel, UnitModel, UnitResidentModel, VehicleModel, UserSocietyRoleModel
+from app.societies.models import (
+    SocietyModel,
+    BuildingModel,
+    FloorModel,
+    UnitModel,
+    UnitResidentModel,
+    VehicleModel,
+    UserSocietyRoleModel,
+    SubscriptionModel,
+    SocietyLeadModel,
+)
 
 # 2. Bind the target metadata for autogenerate
 target_metadata = Base.metadata

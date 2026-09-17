@@ -3,9 +3,6 @@ from typing import Optional
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import func
-
 from app.core.database import get_db_session
 from app.platform.schemas import (
     RegisterSocietyLeadRequest,
@@ -16,8 +13,7 @@ from app.platform.schemas import (
     PlatformCreateAdminRequest,
 )
 from app.platform.services import PlatformAdminService
-from app.societies.models import SocietyModel, SubscriptionModel, SocietyLeadModel
-from app.authentication.models import UserModel
+from app.platform.repository import PlatformRepository
 
 router = APIRouter(tags=["Platform & Lead Management"])
 logger = structlog.get_logger(__name__)
@@ -246,17 +242,10 @@ async def platform_dashboard(
     """
     Platform Admin Endpoint: View high-level metrics (total societies, active subscriptions, leads).
     """
-    soc_count = await db.scalar(select(func.count(SocietyModel.id)))
-    sub_count = await db.scalar(select(func.count(SubscriptionModel.id)).where(SubscriptionModel.status == "active"))
-    user_count = await db.scalar(select(func.count(UserModel.user_id)))
-    lead_count = await db.scalar(select(func.count(SocietyLeadModel.id)))
-
+    repo = PlatformRepository(db)
+    metrics = await repo.get_dashboard_metrics()
     return {
         "success": True,
-        "data": {
-            "total_societies": soc_count or 0,
-            "active_subscriptions": sub_count or 0,
-            "total_users": user_count or 0,
-            "total_leads": lead_count or 0,
-        }
+        "data": metrics,
     }
+

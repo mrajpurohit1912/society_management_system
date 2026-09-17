@@ -1,11 +1,11 @@
 import uuid
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.authentication.models import UserModel, AuthCredentialModel, RefreshTokenModel
+from app.authentication.models import UserModel, AuthCredentialModel, RefreshTokenModel, ActivationTokenModel
 
 class UserRepository:
     """
@@ -96,3 +96,120 @@ class UserRepository:
         self.db.add(token)
         await self.db.flush()
         return token
+
+    async def get_user_credentials(self, user_id: uuid.UUID) -> list[AuthCredentialModel]:
+        """Fetch all credentials associated with a user ID."""
+        query = select(AuthCredentialModel).where(AuthCredentialModel.user_id == user_id)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def get_user_by_id(self, user_id: uuid.UUID) -> Optional[UserModel]:
+        """Fetch a user record by primary key."""
+        query = select(UserModel).where(UserModel.user_id == user_id)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def create_user(
+        self,
+        first_name: str,
+        last_name: str,
+        role: str = "resident",
+        status: str = "registered",
+        email_verified: bool = False,
+    ) -> UserModel:
+        """Create a new user with status and verification flags."""
+        user = UserModel(
+            first_name=first_name,
+            last_name=last_name,
+            role=role,
+            status=status,
+            email_verified=email_verified,
+        )
+        self.db.add(user)
+        await self.db.flush()
+        return user
+
+    async def add_credential(
+        self,
+        user_id: uuid.UUID,
+        provider: str,
+        identifier: str,
+        password_hash: Optional[str] = None,
+    ) -> AuthCredentialModel:
+        """Attach a new credential identity to a user."""
+        credential = AuthCredentialModel(
+            user_id=user_id,
+            provider=provider,
+            identifier=identifier,
+            password_hash=password_hash,
+        )
+        self.db.add(credential)
+        await self.db.flush()
+        return credential
+
+    async def get_credential_by_user_id(
+        self, user_id: uuid.UUID, provider: Optional[str] = None
+    ) -> Optional[AuthCredentialModel]:
+        """Fetch credential by user ID and optional provider."""
+        query = select(AuthCredentialModel).where(AuthCredentialModel.user_id == user_id)
+        if provider:
+            query = query.where(AuthCredentialModel.provider == provider)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def create_activation_token(
+        self,
+        user_id: uuid.UUID,
+        token: str,
+        token_type: str,
+        expires_at: datetime,
+    ) -> ActivationTokenModel:
+        """Create and store an activation or verification token."""
+        activation_token = ActivationTokenModel(
+            user_id=user_id,
+            token=token,
+            type=token_type,
+            expires_at=expires_at,
+        )
+        self.db.add(activation_token)
+        await self.db.flush()
+        return activation_token
+
+    async def get_valid_activation_token(
+        self, token: str, token_type: str
+    ) -> Optional[ActivationTokenModel]:
+        """Fetch an unused activation or verification token matching type."""
+        query = select(ActivationTokenModel).where(
+            ActivationTokenModel.token == token,
+            ActivationTokenModel.type == token_type,
+            ActivationTokenModel.used_at.is_(None),
+        )
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def mark_token_used(self, token_record: ActivationTokenModel) -> None:
+        """Mark an activation token as consumed."""
+        token_record.used_at = datetime.now(timezone.utc)
+        await self.db.flush()
+
+    async def update_user(
+        self,
+        user: UserModel,
+        status: Optional[str] = None,
+        email_verified: Optional[bool] = None,
+    ) -> UserModel:
+        """Update user account status and verification flags."""
+        if status is not None:
+            user.status = status
+        if email_verified is not None:
+            user.email_verified = email_verified
+        await self.db.flush()
+        return user
+
+    async def update_credential_password(
+        self, credential: AuthCredentialModel, password_hash: str
+    ) -> AuthCredentialModel:
+        """Update password hash on an existing credential."""
+        credential.password_hash = password_hash
+        await self.db.flush()
+        return credential

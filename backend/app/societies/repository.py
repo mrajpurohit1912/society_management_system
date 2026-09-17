@@ -13,7 +13,9 @@ from app.societies.models import (
     UnitResidentModel,
     VehicleModel,
     UserSocietyRoleModel,
-    SocietyRole
+    SocietyRole,
+    MembershipStatus,
+    SubscriptionModel,
 )
 
 class SocietyRepository:
@@ -235,3 +237,76 @@ class SocietyRepository:
         )
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
+
+    # --- Membership Operations ---
+    async def get_membership_by_id(self, membership_id: uuid.UUID) -> Optional[UserSocietyRoleModel]:
+        """Fetch a specific membership request / role by ID."""
+        query = select(UserSocietyRoleModel).where(UserSocietyRoleModel.id == membership_id)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_membership(self, society_id: uuid.UUID, user_id: uuid.UUID) -> Optional[UserSocietyRoleModel]:
+        """Fetch a user's membership in a specific society."""
+        return await self.get_user_society_role_model(society_id, user_id)
+
+    async def list_user_memberships(self, user_id: uuid.UUID) -> List[UserSocietyRoleModel]:
+        """List all society memberships for a specific user."""
+        query = select(UserSocietyRoleModel).where(UserSocietyRoleModel.user_id == user_id)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def list_pending_memberships(self, society_id: uuid.UUID) -> List[UserSocietyRoleModel]:
+        """List all pending membership requests for a society."""
+        query = select(UserSocietyRoleModel).where(
+            UserSocietyRoleModel.society_id == society_id,
+            UserSocietyRoleModel.status == MembershipStatus.PENDING.value
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def create_membership(
+        self,
+        user_id: uuid.UUID,
+        society_id: uuid.UUID,
+        unit_id: Optional[uuid.UUID] = None,
+        role: str = SocietyRole.RESIDENT.value,
+        status: str = MembershipStatus.PENDING.value
+    ) -> UserSocietyRoleModel:
+        """Create a new membership record for a user in a society."""
+        membership = UserSocietyRoleModel(
+            user_id=user_id,
+            society_id=society_id,
+            unit_id=unit_id,
+            role=role,
+            status=status
+        )
+        self.db.add(membership)
+        await self.db.flush()
+        return membership
+
+    async def update_membership(
+        self,
+        membership: UserSocietyRoleModel,
+        status: Optional[str] = None,
+        approved_by: Optional[uuid.UUID] = None,
+        unit_id: Optional[uuid.UUID] = None,
+        role: Optional[str] = None,
+    ) -> UserSocietyRoleModel:
+        """Update fields and status of an existing membership record."""
+        if status is not None:
+            membership.status = status
+        if approved_by is not None:
+            membership.approved_by = approved_by
+        if unit_id is not None:
+            membership.unit_id = unit_id
+        if role is not None:
+            membership.role = role
+        await self.db.flush()
+        return membership
+
+    async def get_subscription(self, society_id: uuid.UUID) -> Optional[SubscriptionModel]:
+        """Fetch subscription record for a given society."""
+        query = select(SubscriptionModel).where(SubscriptionModel.society_id == society_id)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+

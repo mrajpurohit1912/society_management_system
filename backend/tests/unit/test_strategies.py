@@ -66,7 +66,7 @@ def credential_mock():
 # ==============================================================================
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.username_password.UserRepository")
 async def test_username_password_signup_success(mock_user_repo_cls, mock_db, user_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -89,7 +89,7 @@ async def test_username_password_signup_success(mock_user_repo_cls, mock_db, use
 
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.username_password.UserRepository")
 async def test_username_password_signup_username_taken(mock_user_repo_cls, mock_db, credential_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -112,7 +112,7 @@ async def test_username_password_signup_username_taken(mock_user_repo_cls, mock_
 # ==============================================================================
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.email_password.UserRepository")
 async def test_email_password_signup_success(mock_user_repo_cls, mock_db, user_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -133,7 +133,7 @@ async def test_email_password_signup_success(mock_user_repo_cls, mock_db, user_m
 
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.email_password.UserRepository")
 async def test_email_password_signup_email_taken(mock_user_repo_cls, mock_db, credential_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -155,7 +155,7 @@ async def test_email_password_signup_email_taken(mock_user_repo_cls, mock_db, cr
 # ==============================================================================
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.mobile_otp.UserRepository")
 async def test_mobile_otp_signup_success(mock_user_repo_cls, mock_db, mock_redis, user_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -182,7 +182,7 @@ async def test_mobile_otp_signup_success(mock_user_repo_cls, mock_db, mock_redis
 
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.mobile_otp.UserRepository")
 async def test_mobile_otp_signup_invalid_otp(mock_user_repo_cls, mock_db, mock_redis):
     # Mock invalid OTP
     mock_redis.verify_otp.return_value = False
@@ -205,8 +205,8 @@ async def test_mobile_otp_signup_invalid_otp(mock_user_repo_cls, mock_db, mock_r
 # ==============================================================================
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.id_token.verify_oauth2_token")
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.google_oauth.id_token.verify_oauth2_token")
+@patch("app.authentication.strategies.google_oauth.UserRepository")
 async def test_google_signup_new_user(mock_user_repo_cls, mock_verify_oauth, mock_db, user_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -243,8 +243,8 @@ async def test_google_signup_new_user(mock_user_repo_cls, mock_verify_oauth, moc
 
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.id_token.verify_oauth2_token")
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.google_oauth.id_token.verify_oauth2_token")
+@patch("app.authentication.strategies.google_oauth.UserRepository")
 async def test_google_signup_existing_user(mock_user_repo_cls, mock_verify_oauth, mock_db, user_mock, credential_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -266,7 +266,7 @@ async def test_google_signup_existing_user(mock_user_repo_cls, mock_verify_oauth
 
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.id_token.verify_oauth2_token")
+@patch("app.authentication.strategies.google_oauth.id_token.verify_oauth2_token")
 async def test_google_signup_invalid_token(mock_verify_oauth, mock_db):
     # Verification raises an error (expired or invalid signature)
     mock_verify_oauth.side_effect = Exception("Signature verification failed")
@@ -285,7 +285,7 @@ async def test_google_signup_invalid_token(mock_verify_oauth, mock_db):
 # ==============================================================================
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.admin_signup.UserRepository")
 async def test_admin_signup_success(mock_user_repo_cls, mock_db, user_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -332,7 +332,7 @@ async def test_admin_signup_invalid_secret(mock_db):
 
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.admin_signup.UserRepository")
 async def test_admin_signup_email_taken(mock_user_repo_cls, mock_db, credential_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -358,7 +358,7 @@ async def test_admin_signup_email_taken(mock_user_repo_cls, mock_db, credential_
 # ==============================================================================
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.username_password.UserRepository")
 async def test_username_signin_success(mock_user_repo_cls, mock_db, user_mock, credential_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -377,7 +377,7 @@ async def test_username_signin_success(mock_user_repo_cls, mock_db, user_mock, c
 
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.username_password.UserRepository")
 async def test_username_signin_invalid_password(mock_user_repo_cls, mock_db, user_mock, credential_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -398,7 +398,7 @@ async def test_username_signin_invalid_password(mock_user_repo_cls, mock_db, use
 # ==============================================================================
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.mobile_otp.UserRepository")
 async def test_mobile_otp_signin_success(mock_user_repo_cls, mock_db, mock_redis, user_mock, credential_mock):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst
@@ -420,7 +420,7 @@ async def test_mobile_otp_signin_success(mock_user_repo_cls, mock_db, mock_redis
 
 
 @pytest.mark.asyncio
-@patch("app.authentication.strategies.UserRepository")
+@patch("app.authentication.strategies.mobile_otp.UserRepository")
 async def test_mobile_otp_signin_not_registered(mock_user_repo_cls, mock_db, mock_redis):
     mock_repo_inst = AsyncMock()
     mock_user_repo_cls.return_value = mock_repo_inst

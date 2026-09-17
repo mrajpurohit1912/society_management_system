@@ -365,3 +365,65 @@ async def test_get_user_society_role_model(repo, mock_db_session):
     
     result = await repo.get_user_society_role_model(s_id, usr_id)
     assert result == mock_role
+
+
+# --- Membership Operations Tests ---
+
+@pytest.mark.asyncio
+async def test_create_membership(repo, mock_db_session):
+    u_id = uuid.uuid4()
+    s_id = uuid.uuid4()
+    unit_id = uuid.uuid4()
+    result = await repo.create_membership(user_id=u_id, society_id=s_id, unit_id=unit_id)
+    assert result.user_id == u_id
+    assert result.society_id == s_id
+    assert result.unit_id == unit_id
+    assert result.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_get_membership_by_id(repo, mock_db_session):
+    mem_id = uuid.uuid4()
+    mock_mem = UserSocietyRoleModel(id=mem_id)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = mock_mem
+    mock_db_session.execute.return_value = mock_result
+
+    result = await repo.get_membership_by_id(mem_id)
+    assert result == mock_mem
+
+
+@pytest.mark.asyncio
+async def test_list_user_memberships(repo, mock_db_session):
+    u_id = uuid.uuid4()
+    mock_mem = UserSocietyRoleModel(user_id=u_id)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_mem]
+    mock_db_session.execute.return_value = mock_result
+
+    result = await repo.list_user_memberships(u_id)
+    assert len(result) == 1
+    assert result[0] == mock_mem
+
+
+@pytest.mark.asyncio
+async def test_list_pending_memberships(repo, mock_db_session):
+    s_id = uuid.uuid4()
+    mock_mem = UserSocietyRoleModel(society_id=s_id, status="pending")
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_mem]
+    mock_db_session.execute.return_value = mock_result
+
+    result = await repo.list_pending_memberships(s_id)
+    assert len(result) == 1
+    assert result[0] == mock_mem
+
+
+@pytest.mark.asyncio
+async def test_update_membership(repo, mock_db_session):
+    mock_mem = UserSocietyRoleModel(status="pending")
+    admin_id = uuid.uuid4()
+    result = await repo.update_membership(mock_mem, status="approved", approved_by=admin_id)
+    assert result.status == "approved"
+    assert result.approved_by == admin_id
+

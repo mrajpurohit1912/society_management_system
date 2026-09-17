@@ -16,6 +16,8 @@ from app.authentication.models import (
     TokenType,
 )
 from app.societies.models import UserSocietyRoleModel, SubscriptionModel, SubscriptionStatus, SocietyModel
+from app.authentication.repository import UserRepository
+from app.societies.repository import SocietyRepository
 from app.authentication.schemas import (
     ResidentSignupRequest,
     VerifyEmailRequest,
@@ -60,41 +62,36 @@ class AuthFlowService:
 
     @classmethod
     async def resident_signup(cls, db: AsyncSession, payload: ResidentSignupRequest) -> UserModel:
-        stmt = select(AuthCredentialModel).where(AuthCredentialModel.identifier == payload.email)
-        res = await db.execute(stmt)
-        if res.scalar_one_or_none():
+        user_repo = UserRepository(db)
+        existing_cred = await user_repo.get_credential_by_identifier("email", payload.email)
+        if existing_cred:
             raise ValueError(f"An account with email '{payload.email}' already exists")
 
         hashed_password = PasswordHasher.hash_password(payload.password)
 
-        user = UserModel(
+        user = await user_repo.create_user(
             first_name=payload.first_name,
             last_name=payload.last_name,
             role=UserRole.RESIDENT.value,
             status=UserAccountStatus.REGISTERED.value,
             email_verified=False,
         )
-        db.add(user)
-        await db.flush()
 
-        credential = AuthCredentialModel(
+        await user_repo.add_credential(
             user_id=user.user_id,
             provider="email",
             identifier=payload.email,
             password_hash=hashed_password,
         )
-        db.add(credential)
 
         raw_token = secrets.token_urlsafe(32)
         expiry = datetime.now(timezone.utc) + timedelta(hours=24)
-        activation_token = ActivationTokenModel(
+        await user_repo.create_activation_token(
             user_id=user.user_id,
             token=raw_token,
-            type=TokenType.EMAIL_VERIFICATION.value,
+            token_type=TokenType.EMAIL_VERIFICATION.value,
             expires_at=expiry,
         )
-        db.add(activation_token)
-        await db.flush()
 
         EmailService.send_resident_verification_email(
             to_email=payload.email,
@@ -107,94 +104,76 @@ class AuthFlowService:
 
     @classmethod
     async def verify_email(cls, db: AsyncSession, payload: VerifyEmailRequest) -> UserModel:
-        stmt = select(ActivationTokenModel).where(
-            ActivationTokenModel.token == payload.token,
-            ActivationTokenModel.type == TokenType.EMAIL_VERIFICATION.value,
-            ActivationTokenModel.used_at.is_(None)
+        user_repo = UserRepository(db)
+        token_record = await user_repo.get_valid_activation_token(
+            token=payload.token,
+            token_type=TokenType.EMAIL_VERIFICATION.value,
         )
-        res = await db.execute(stmt)
-        token_record = res.scalar_one_or_none()
         if not token_record:
             raise ValueError("Invalid or expired email verification token")
 
         if _ensure_timezone(token_record.expires_at) < datetime.now(timezone.utc):
             raise ValueError("Email verification token has expired. Please request a new one.")
 
-        stmt_user = select(UserModel).where(UserModel.user_id == token_record.user_id)
-        res_user = await db.execute(stmt_user)
-        user = res_user.scalar_one_or_none()
+        user = await user_repo.get_user_by_id(token_record.user_id)
         if not user:
             raise ValueError("User associated with token not found")
 
-        user.email_verified = True
-        user.status = UserAccountStatus.EMAIL_VERIFIED.value
-        token_record.used_at = datetime.now(timezone.utc)
-        await db.flush()
+        await user_repo.update_user(user, email_verified=True, status=UserAccountStatus.EMAIL_VERIFIED.value)
+        await user_repo.mark_token_used(token_record)
 
         logger.info("auth.email_verified_success", user_id=str(user.user_id))
         return user
 
     @classmethod
     async def activate_admin(cls, db: AsyncSession, payload: AdminActivateRequest) -> UserModel:
-        stmt = select(ActivationTokenModel).where(
-            ActivationTokenModel.token == payload.token,
-            ActivationTokenModel.type == TokenType.ADMIN_ACTIVATION.value,
-            ActivationTokenModel.used_at.is_(None)
+        user_repo = UserRepository(db)
+        token_record = await user_repo.get_valid_activation_token(
+            token=payload.token,
+            token_type=TokenType.ADMIN_ACTIVATION.value,
         )
-        res = await db.execute(stmt)
-        token_record = res.scalar_one_or_none()
         if not token_record:
             raise ValueError("Invalid or expired admin activation token")
 
         if _ensure_timezone(token_record.expires_at) < datetime.now(timezone.utc):
             raise ValueError("Admin activation token has expired. Contact platform support.")
 
-        stmt_user = select(UserModel).where(UserModel.user_id == token_record.user_id)
-        res_user = await db.execute(stmt_user)
-        user = res_user.scalar_one_or_none()
+        user = await user_repo.get_user_by_id(token_record.user_id)
         if not user:
             raise ValueError("User account not found")
 
-        stmt_cred = select(AuthCredentialModel).where(AuthCredentialModel.user_id == user.user_id)
-        res_cred = await db.execute(stmt_cred)
-        cred = res_cred.scalar_one_or_none()
+        cred = await user_repo.get_credential_by_user_id(user.user_id)
         if not cred:
             raise ValueError("User auth credentials record missing")
 
-        cred.password_hash = PasswordHasher.hash_password(payload.password)
-        user.status = UserAccountStatus.ACTIVE.value
-        token_record.used_at = datetime.now(timezone.utc)
-        await db.flush()
+        hashed_password = PasswordHasher.hash_password(payload.password)
+        await user_repo.update_credential_password(cred, hashed_password)
+        await user_repo.update_user(user, status=UserAccountStatus.ACTIVE.value)
+        await user_repo.mark_token_used(token_record)
 
         logger.info("auth.admin_activated_success", user_id=str(user.user_id))
         return user
 
     @classmethod
     async def unified_login(cls, db: AsyncSession, payload: UnifiedLoginRequest) -> dict:
-        stmt = select(AuthCredentialModel).where(
-            AuthCredentialModel.identifier == payload.email,
-            AuthCredentialModel.provider == "email"
-        )
-        res = await db.execute(stmt)
-        cred = res.scalar_one_or_none()
+        user_repo = UserRepository(db)
+        society_repo = SocietyRepository(db)
+
+        cred = await user_repo.get_credential_by_identifier("email", payload.email)
         if not cred or not cred.password_hash:
             raise ValueError("Invalid email or password")
 
         if not PasswordHasher.verify_password(payload.password, cred.password_hash):
             raise ValueError("Invalid email or password")
 
-        stmt_user = select(UserModel).where(UserModel.user_id == cred.user_id)
-        res_user = await db.execute(stmt_user)
-        user = res_user.scalar_one_or_none()
+        user = await user_repo.get_user_by_id(cred.user_id)
         if not user:
             raise ValueError("Invalid email or password")
 
         if user.status == UserAccountStatus.SUSPENDED.value:
             raise ValueError("Your account has been suspended. Contact support.")
 
-        stmt_roles = select(UserSocietyRoleModel).where(UserSocietyRoleModel.user_id == user.user_id)
-        res_roles = await db.execute(stmt_roles)
-        memberships = res_roles.scalars().all()
+        memberships = await society_repo.list_user_memberships(user.user_id)
 
         active_society_id = None
         society_role = user.role
@@ -206,9 +185,7 @@ class AuthFlowService:
             society_role = active_mem.role
             membership_status = active_mem.status
 
-            stmt_sub = select(SubscriptionModel).where(SubscriptionModel.society_id == active_mem.society_id)
-            res_sub = await db.execute(stmt_sub)
-            sub = res_sub.scalar_one_or_none()
+            sub = await society_repo.get_subscription(active_mem.society_id)
             if sub and _ensure_timezone(sub.expiry_date) < datetime.now(timezone.utc):
                 sub.status = SubscriptionStatus.EXPIRED.value
                 logger.warning("auth.login_society_subscription_expired", society_id=str(active_mem.society_id))
@@ -228,8 +205,9 @@ class AuthFlowService:
                 "active_society_id": active_society_id,
                 "society_role": society_role,
                 "membership_status": membership_status,
-            }
+            },
         }
+
 
 
 class AuthOrchestratorService:

@@ -1,12 +1,14 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from enum import Enum
 
 # --- Domain Entities ---
 
 class AuthCredentialDomain(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: Optional[int] = None
     user_id: uuid.UUID
     provider: str
@@ -15,10 +17,10 @@ class AuthCredentialDomain(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
 
 class UserDomain(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: uuid.UUID
     first_name: str = Field(..., max_length=50)
     last_name: str = Field(..., max_length=50)
@@ -28,9 +30,6 @@ class UserDomain(BaseModel):
     created_at: datetime
     updated_at: datetime
     credentials: List[AuthCredentialDomain] = []
-
-    class Config:
-        from_attributes = True
 
 
 # --- Request DTOs ---
