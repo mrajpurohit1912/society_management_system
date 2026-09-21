@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.core.database import get_db_session
 from app.authentication.security import TokenService
 from app.authentication.repository import UserRepository
-from app.authentication.models import UserModel
+from app.authentication.models import UserModel, UserRole
 from app.societies.models import UserSocietyRoleModel, SocietyRole
 
 security_scheme = HTTPBearer()
@@ -83,3 +83,66 @@ async def require_society_admin(
         )
         
     return current_user
+
+
+async def require_society_member(
+    society_id: uuid.UUID,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> UserModel:
+    # 1. Global Platform Admin bypass
+    if current_user.role in ("platform_admin", "admin"):
+        return current_user
+
+    # 2. Check society-specific role mapping
+    query = select(UserSocietyRoleModel).where(
+        UserSocietyRoleModel.user_id == current_user.user_id,
+        UserSocietyRoleModel.society_id == society_id,
+    )
+    result = await db.execute(query)
+    role_mapping = result.scalar_one_or_none()
+
+    if not role_mapping:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You are not a member of this society.",
+        )
+
+    return current_user
+
+
+async def require_security_or_admin(
+    society_id: uuid.UUID,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> UserModel:
+    # 1. Global Platform Admin bypass
+    if current_user.role in ("platform_admin", "admin"):
+        return current_user
+
+    # 2. Check global role if security guard belonging to this society
+    query = select(UserSocietyRoleModel).where(
+        UserSocietyRoleModel.user_id == current_user.user_id,
+        UserSocietyRoleModel.society_id == society_id,
+    )
+    result = await db.execute(query)
+    role_mapping = result.scalar_one_or_none()
+
+    if current_user.role == UserRole.SECURITY_GUARD.value and role_mapping:
+        return current_user
+
+    # 3. Check society-specific role mapping
+    allowed_roles = (
+        SocietyRole.ADMIN.value,
+        SocietyRole.SOCIETY_ADMIN.value,
+        SocietyRole.COMMITTEE.value,
+        SocietyRole.SECURITY.value,
+    )
+    if not role_mapping or role_mapping.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Security guard or administrative privileges required for this action.",
+        )
+
+    return current_user
+

@@ -31,6 +31,10 @@ from app.societies.models import (
     SubscriptionModel,
     SocietyLeadModel,
 )
+from app.visitors.models import (
+    VisitorPassModel,
+    VisitorLogModel,
+)
 
 # 2. Bind the target metadata for autogenerate
 target_metadata = Base.metadata
