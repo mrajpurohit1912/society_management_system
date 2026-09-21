@@ -16,12 +16,16 @@ import app.authentication.models  # noqa
 import app.societies.models       # noqa
 import app.payments.models        # noqa
 import app.visitors.models        # noqa
+import app.complaints.models      # noqa
+import app.notices.models         # noqa
 
 from app.authentication.routes import router as auth_router
 from app.societies.routes import router as societies_router
 from app.platform.routes import router as platform_router
 from app.payments.routes import router as payments_router
 from app.visitors.routes import router as visitors_router
+from app.complaints.routes import router as complaints_router
+from app.notices.routes import router as notices_router
 
 # Initialize structured logging
 setup_logging(env=settings.ENV, log_level=settings.LOG_LEVEL)
@@ -110,6 +114,8 @@ app.include_router(societies_router, prefix="/api/v1")
 app.include_router(platform_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
 app.include_router(visitors_router, prefix="/api/v1")
+app.include_router(complaints_router, prefix="/api/v1")
+app.include_router(notices_router, prefix="/api/v1")
 
 @app.get("/")
 def read_root():

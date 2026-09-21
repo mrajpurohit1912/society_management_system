@@ -35,6 +35,14 @@ from app.visitors.models import (
     VisitorPassModel,
     VisitorLogModel,
 )
+from app.complaints.models import (
+    ComplaintTicketModel,
+    ComplaintCommentModel,
+)
+from app.notices.models import (
+    NoticeModel,
+    NoticeReadReceiptModel,
+)
 
 # 2. Bind the target metadata for autogenerate
 target_metadata = Base.metadata
