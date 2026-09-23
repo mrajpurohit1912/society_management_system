@@ -38,13 +38,14 @@ async def lifespan(app_instance: FastAPI):
     Initializes database schema synchronization on application startup.
     Formal DDL mutations are tracked via Alembic migrations.
     """
-    logger.info("startup.database_schema_sync_started")
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("startup.database_schema_sync_completed")
-    except Exception as e:
-        logger.exception("startup.database_schema_sync_failed", error=str(e))
+    if settings.ENV != "production":
+        logger.info("startup.database_schema_sync_started")
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("startup.database_schema_sync_completed")
+        except Exception as e:
+            logger.exception("startup.database_schema_sync_failed", error=str(e))
     yield
 
 # Initialize modern FastAPI app with OpenAPI configurations & lifespan

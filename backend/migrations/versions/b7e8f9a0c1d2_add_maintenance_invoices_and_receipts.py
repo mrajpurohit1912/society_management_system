@@ -19,65 +19,105 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    # 1. Create maintenance_invoices table
-    op.create_table(
-        'maintenance_invoices',
-        sa.Column('id', sa.UUID(), nullable=False),
-        sa.Column('society_id', sa.UUID(), nullable=False),
-        sa.Column('unit_id', sa.UUID(), nullable=False),
-        sa.Column('billing_period', sa.String(length=20), nullable=False),
-        sa.Column('title', sa.String(length=100), nullable=False),
-        sa.Column('description', sa.String(length=255), nullable=True),
-        sa.Column('amount', sa.Float(), nullable=False),
-        sa.Column('due_date', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('penalty_amount', sa.Float(), server_default='0.0', nullable=False),
-        sa.Column('status', sa.String(length=30), server_default='pending', nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.ForeignKeyConstraint(['society_id'], ['societies.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['unit_id'], ['units.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id')
-    )
+    """Upgrade schema safely using inspector."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
 
-    # 2. Add columns to payments table
-    op.add_column('payments', sa.Column('society_id', sa.UUID(), nullable=True))
-    op.add_column('payments', sa.Column('invoice_id', sa.UUID(), nullable=True))
-    op.add_column('payments', sa.Column('unit_id', sa.UUID(), nullable=True))
-    op.add_column('payments', sa.Column('user_id', sa.UUID(), nullable=True))
-    op.add_column('payments', sa.Column('payment_method', sa.String(length=30), server_default='offline_upi_neft', nullable=False))
-    op.add_column('payments', sa.Column('transaction_reference', sa.String(length=100), nullable=True))
-    op.add_column('payments', sa.Column('gateway_order_id', sa.String(length=100), nullable=True))
-    op.add_column('payments', sa.Column('gateway_payment_id', sa.String(length=100), nullable=True))
-    op.add_column('payments', sa.Column('approved_by', sa.UUID(), nullable=True))
-    op.add_column('payments', sa.Column('rejection_reason', sa.String(length=255), nullable=True))
-    op.add_column('payments', sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False))
-    op.add_column('payments', sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False))
+    # 1. Create maintenance_invoices table if not exists
+    if 'maintenance_invoices' not in existing_tables:
+        op.create_table(
+            'maintenance_invoices',
+            sa.Column('id', sa.UUID(), nullable=False),
+            sa.Column('society_id', sa.UUID(), nullable=False),
+            sa.Column('unit_id', sa.UUID(), nullable=False),
+            sa.Column('billing_period', sa.String(length=20), nullable=False),
+            sa.Column('title', sa.String(length=100), nullable=False),
+            sa.Column('description', sa.String(length=255), nullable=True),
+            sa.Column('amount', sa.Float(), nullable=False),
+            sa.Column('due_date', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('penalty_amount', sa.Float(), server_default='0.0', nullable=False),
+            sa.Column('status', sa.String(length=30), server_default='pending', nullable=False),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.ForeignKeyConstraint(['society_id'], ['societies.id'], ondelete='CASCADE'),
+            sa.ForeignKeyConstraint(['unit_id'], ['units.id'], ondelete='CASCADE'),
+            sa.PrimaryKeyConstraint('id')
+        )
 
-    op.create_foreign_key('fk_payments_society_id', 'payments', 'societies', ['society_id'], ['id'], ondelete='CASCADE')
-    op.create_foreign_key('fk_payments_invoice_id', 'payments', 'maintenance_invoices', ['invoice_id'], ['id'], ondelete='SET NULL')
-    op.create_foreign_key('fk_payments_unit_id', 'payments', 'units', ['unit_id'], ['id'], ondelete='SET NULL')
-    op.create_foreign_key('fk_payments_user_id', 'payments', 'users', ['user_id'], ['user_id'], ondelete='CASCADE')
-    op.create_foreign_key('fk_payments_approved_by', 'payments', 'users', ['approved_by'], ['user_id'], ondelete='SET NULL')
+    # 2. Add columns to payments table if not present
+    payment_cols = {c['name'] for c in inspector.get_columns('payments')} if 'payments' in existing_tables else set()
+    if 'society_id' not in payment_cols:
+        op.add_column('payments', sa.Column('society_id', sa.UUID(), nullable=True))
+    if 'invoice_id' not in payment_cols:
+        op.add_column('payments', sa.Column('invoice_id', sa.UUID(), nullable=True))
+    if 'unit_id' not in payment_cols:
+        op.add_column('payments', sa.Column('unit_id', sa.UUID(), nullable=True))
+    if 'user_id' not in payment_cols:
+        op.add_column('payments', sa.Column('user_id', sa.UUID(), nullable=True))
+    if 'payment_method' not in payment_cols:
+        op.add_column('payments', sa.Column('payment_method', sa.String(length=30), server_default='offline_upi_neft', nullable=False))
+    if 'transaction_reference' not in payment_cols:
+        op.add_column('payments', sa.Column('transaction_reference', sa.String(length=100), nullable=True))
+    if 'gateway_order_id' not in payment_cols:
+        op.add_column('payments', sa.Column('gateway_order_id', sa.String(length=100), nullable=True))
+    if 'gateway_payment_id' not in payment_cols:
+        op.add_column('payments', sa.Column('gateway_payment_id', sa.String(length=100), nullable=True))
+    if 'approved_by' not in payment_cols:
+        op.add_column('payments', sa.Column('approved_by', sa.UUID(), nullable=True))
+    if 'rejection_reason' not in payment_cols:
+        op.add_column('payments', sa.Column('rejection_reason', sa.String(length=255), nullable=True))
+    if 'created_at' not in payment_cols:
+        op.add_column('payments', sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False))
+    if 'updated_at' not in payment_cols:
+        op.add_column('payments', sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False))
 
-    # 3. Create payment_receipts table
-    op.create_table(
-        'payment_receipts',
-        sa.Column('id', sa.UUID(), nullable=False),
-        sa.Column('payment_id', sa.UUID(), nullable=False),
-        sa.Column('receipt_number', sa.String(length=50), nullable=False),
-        sa.Column('invoice_id', sa.UUID(), nullable=True),
-        sa.Column('amount_paid', sa.Float(), nullable=False),
-        sa.Column('payment_date', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('issued_to_name', sa.String(length=100), nullable=False),
-        sa.Column('unit_number', sa.String(length=50), nullable=True),
-        sa.Column('society_name', sa.String(length=100), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.ForeignKeyConstraint(['payment_id'], ['payments.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('payment_id'),
-        sa.UniqueConstraint('receipt_number')
-    )
+    payment_fks = {fk['name'] for fk in inspector.get_foreign_keys('payments')} if 'payments' in existing_tables else set()
+    if 'fk_payments_society_id' not in payment_fks:
+        try:
+            op.create_foreign_key('fk_payments_society_id', 'payments', 'societies', ['society_id'], ['id'], ondelete='CASCADE')
+        except Exception:
+            pass
+    if 'fk_payments_invoice_id' not in payment_fks:
+        try:
+            op.create_foreign_key('fk_payments_invoice_id', 'payments', 'maintenance_invoices', ['invoice_id'], ['id'], ondelete='SET NULL')
+        except Exception:
+            pass
+    if 'fk_payments_unit_id' not in payment_fks:
+        try:
+            op.create_foreign_key('fk_payments_unit_id', 'payments', 'units', ['unit_id'], ['id'], ondelete='SET NULL')
+        except Exception:
+            pass
+    if 'fk_payments_user_id' not in payment_fks:
+        try:
+            op.create_foreign_key('fk_payments_user_id', 'payments', 'users', ['user_id'], ['user_id'], ondelete='CASCADE')
+        except Exception:
+            pass
+    if 'fk_payments_approved_by' not in payment_fks:
+        try:
+            op.create_foreign_key('fk_payments_approved_by', 'payments', 'users', ['approved_by'], ['user_id'], ondelete='SET NULL')
+        except Exception:
+            pass
+
+    # 3. Create payment_receipts table if not exists
+    if 'payment_receipts' not in existing_tables:
+        op.create_table(
+            'payment_receipts',
+            sa.Column('id', sa.UUID(), nullable=False),
+            sa.Column('payment_id', sa.UUID(), nullable=False),
+            sa.Column('receipt_number', sa.String(length=50), nullable=False),
+            sa.Column('invoice_id', sa.UUID(), nullable=True),
+            sa.Column('amount_paid', sa.Float(), nullable=False),
+            sa.Column('payment_date', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.Column('issued_to_name', sa.String(length=100), nullable=False),
+            sa.Column('unit_number', sa.String(length=50), nullable=True),
+            sa.Column('society_name', sa.String(length=100), nullable=False),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.ForeignKeyConstraint(['payment_id'], ['payments.id'], ondelete='CASCADE'),
+            sa.PrimaryKeyConstraint('id'),
+            sa.UniqueConstraint('payment_id'),
+            sa.UniqueConstraint('receipt_number')
+        )
 
 
 def downgrade() -> None:
