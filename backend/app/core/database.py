@@ -12,14 +12,16 @@ class Base(DeclarativeBase):
 
 DATABASE_URL = settings.DATABASE_URL
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_size=20,
-    max_overflow=10,
-    pool_recycle=1800,
-    pool_pre_ping=True,
-)
+engine_kwargs = {"echo": False}
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs.update({
+        "pool_size": 20,
+        "max_overflow": 10,
+        "pool_recycle": 1800,
+        "pool_pre_ping": True,
+    })
+
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
