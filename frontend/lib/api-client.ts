@@ -3,7 +3,7 @@ import {v4 as uuidv4} from 'uuid';
 
 
 export const apiClient = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1',
+    baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || 'https://society-management-system-1-1c3l.onrender.com/api/v1',
     headers: {
         'Content-Type':'application/json',
     },
@@ -23,15 +23,29 @@ apiClient.interceptors.request.use((config) => {
 });
 
 
-apiClient.interceptors.response.use(
-    (response) => response,
-    (error) => {
-    if (error.response?.status === 401 && typeof window !== 'undefined') {                                                                                                         
-        localStorage.removeItem('access_token');                                                                                                              
-        if (window.location.pathname !== '/login') {                                                                                                                               
-            window.location.href = '/login';                                                                                                                                       
-        }                                                                                                                                                                          
-    }     
-        return Promise.reject(error);
-    }
-);
+apiClient.interceptors.response.use(                                                                                                                                                      
+  (response) => response,                                                                                                                                                                 
+  (error) => {                                                                                                                                                                            
+    if (typeof window !== 'undefined') {
+      // 1. Session Expiry / 401 Unauthorized Handling
+      if (error.response?.status === 401) {           
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('society-auth-storage');
+
+        if (window.location.pathname !== '/login') {
+          window.location.replace('/login');        
+        }
+      }   
+       
+      // 2. FastAPI Error Normalization (Formats Pydantic array into readable string)
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+        if (Array.isArray(detail)) {
+            const formattedError = detail.map((err: { msg: string }) => err.msg).join(', ');          return Promise.reject(new Error(formattedError));
+        }
+      }   
+    }   
+     
+    return Promise.reject(error);
+  }
+);  
