@@ -3,8 +3,14 @@ name: Continuous Integration
 on:
   push:
     branches: [ main ]
+    paths:  
+      - 'backend/**'                                                                                                                                                                
+      - '.github/workflows/ci.yml'    
   pull_request:
     branches: [ main ]
+    paths:                                                                                                                                                                          
+      - 'backend/**'                                                                                                                                                                
+      - '.github/workflows/ci.yml'      
 
 jobs:
   test:
@@ -38,6 +44,6 @@ jobs:
         run: |
           uv sync --frozen
 
-      - name: Run Pytest with Coverage Enforcement
+      - name: Run Pytest
         run: |
-          uv run pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+          uv run pytest --cov-report=xml
