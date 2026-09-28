@@ -1,6 +1,5 @@
 import uuid
 import time
-import os
 import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -97,7 +96,7 @@ origins = [
     "http://127.0.0.1:4200",
 ]
 
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+allowed_origins_env = settings.ALLOWED_ORIGINS
 if allowed_origins_env:
     origins.extend([origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()])
 

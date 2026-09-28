@@ -1,8 +1,8 @@
-import os
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db_session
 from app.core.cache import RedisService
 from app.core.logging_context import set_logging_context
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication & User Onboarding"])
 logger = structlog.get_logger(__name__)
 
 redis_service = RedisService()
-google_client_id = os.getenv("GOOGLE_CLIENT_ID", "your-google-client-id")
+google_client_id = settings.GOOGLE_CLIENT_ID
 orchestrator = AuthOrchestratorService(redis_service, google_client_id)
 login_orchestrator = LoginOrchestratorService(redis_service, google_client_id)
 

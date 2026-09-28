@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "onboarding@resend.dev"
     APP_BASE_URL: str = "http://localhost:3000"
 
+    # CORS & External Providers
+    ALLOWED_ORIGINS: str | None = None
+    GOOGLE_CLIENT_ID: str = "your-google-client-id"
+    RAZORPAY_KEY_ID: str | None = None
+    RAZORPAY_KEY_SECRET: str | None = None
+
     # Tells Pydantic to read from a .env file if the OS variables aren't set
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 settings = Settings()

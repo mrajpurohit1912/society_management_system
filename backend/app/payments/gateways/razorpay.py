@@ -1,10 +1,10 @@
-import os
 import uuid
 import hmac
 import hashlib
 from typing import Optional, Dict, Any
 import structlog
 
+from app.core.config import settings
 from app.payments.gateways.base import BasePaymentGateway
 from app.payments.gateways.mock import MockPaymentGateway
 
@@ -20,8 +20,8 @@ class RazorpayGateway(BasePaymentGateway):
     """
 
     def __init__(self):
-        self.key_id = os.getenv("RAZORPAY_KEY_ID")
-        self.key_secret = os.getenv("RAZORPAY_KEY_SECRET")
+        self.key_id = settings.RAZORPAY_KEY_ID
+        self.key_secret = settings.RAZORPAY_KEY_SECRET
         self._mock_fallback = MockPaymentGateway()
         self.is_configured = bool(self.key_id and self.key_secret)
 
