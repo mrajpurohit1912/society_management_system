@@ -41,9 +41,16 @@ apiClient.interceptors.response.use(
       if (error.response?.data?.detail) {
         const detail = error.response.data.detail;
         if (Array.isArray(detail)) {
-            const formattedError = detail.map((err: { msg: string }) => err.msg).join(', ');          return Promise.reject(new Error(formattedError));
+            const formattedError = detail.map((err: { msg: string }) => err.msg).join(', ');          
+            return Promise.reject(new Error(formattedError));
         }
-      }   
+        if (typeof detail === 'string'){
+          return Promise.reject(new Error(detail));
+        }
+      } 
+      if (error.response?.data?.message) {
+        return Promise.reject(new Error(error.response.data.message));
+      }  
     }   
      
     return Promise.reject(error);
