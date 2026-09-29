@@ -79,20 +79,45 @@ async def list_pending_membership_requests(
     """
     service = routes.MembershipService(db)
     requests = await service.list_pending_requests(society_id)
+    
+    result = []
+    for r in requests:
+        email = None
+        phone = None
+        if r.user and r.user.credentials:
+            for cred in r.user.credentials:
+                if cred.provider in ("email", "google", "username") and not email:
+                    email = cred.identifier
+                elif cred.provider == "phone" and not phone:
+                    phone = cred.identifier
+
+        unit_number = r.unit.unit_number if r.unit else None
+        floor_number = r.unit.floor.floor_number if (r.unit and r.unit.floor) else None
+        building_name = (
+            r.unit.floor.building.name
+            if (r.unit and r.unit.floor and r.unit.floor.building)
+            else None
+        )
+
+        result.append({
+            "membership_id": str(r.id),
+            "user_id": str(r.user_id),
+            "user_name": f"{r.user.first_name} {r.user.last_name}".strip() if r.user else "Resident",
+            "user_email": email,
+            "user_phone": phone,
+            "society_id": str(r.society_id),
+            "unit_id": str(r.unit_id) if r.unit_id else None,
+            "unit_number": unit_number,
+            "building_name": building_name,
+            "floor_number": floor_number,
+            "role": r.role,
+            "status": r.status,
+            "requested_at": r.created_at.isoformat() if r.created_at else None,
+        })
+
     return {
         "success": True,
-        "data": [
-            {
-                "membership_id": str(r.id),
-                "user_id": str(r.user_id),
-                "society_id": str(r.society_id),
-                "unit_id": str(r.unit_id) if r.unit_id else None,
-                "role": r.role,
-                "status": r.status,
-                "requested_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in requests
-        ],
+        "data": result,
     }
 
 

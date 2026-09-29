@@ -4,9 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 import structlog
 
+from datetime import datetime
 from app.core.email_service import EmailService
 from app.societies.models import (
     UserSocietyRoleModel,
+    UnitResidentModel,
     MembershipStatus,
     SocietyRole,
 )
@@ -106,6 +108,21 @@ class MembershipService:
             unit_obj = await self.repo.get_unit(membership.unit_id)
             if unit_obj:
                 unit_number = unit_obj.unit_number
+                unit_obj.status = "occupied"
+
+            # Check if resident link already exists; if not, create it
+            existing_link = await self.repo.get_resident_link(membership.unit_id, membership.user_id)
+            if not existing_link:
+                res_link = UnitResidentModel(
+                    unit_id=membership.unit_id,
+                    user_id=membership.user_id,
+                    residency_type=membership.role or "resident",
+                    is_primary_contact=True,
+                    start_date=datetime.now(),
+                    status="active",
+                )
+                self.db.add(res_link)
+                await self.db.flush()
 
         # Fetch primary email via UserRepository
         if user and society:

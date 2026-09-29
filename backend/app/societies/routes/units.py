@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,3 +108,34 @@ async def update_unit(
     async with safe_transaction(db):
         res = await service.update_unit(unit_id, payload)
         return {"success": True, "message": "Unit updated successfully", "data": res}
+
+
+@router.get("/{society_id}/units")
+async def list_society_units(
+    society_id: uuid.UUID,
+    building_id: Optional[uuid.UUID] = None,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """
+    List all units across a society (with optional building/wing filter).
+    Accessible to any authenticated user (e.g. resident picking their flat on onboarding).
+    """
+    repo = routes.SocietyRepository(db)
+    units = await repo.list_all_units_in_society(society_id, building_id=building_id)
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": str(u.id),
+                "floor_id": str(u.floor_id),
+                "unit_number": u.unit_number,
+                "unit_type": u.unit_type,
+                "status": u.status,
+                "floor_number": u.floor.floor_number if u.floor else None,
+                "building_id": str(u.floor.building.id) if (u.floor and u.floor.building) else None,
+                "building_name": u.floor.building.name if (u.floor and u.floor.building) else None,
+            }
+            for u in units
+        ]
+    }

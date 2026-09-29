@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Building2, Search, Loader2, CheckCircle, AlertCircle, LogOut, MapPin } from 'lucide-react';
+import { Building2, Search, Loader2, CheckCircle, AlertCircle, LogOut, MapPin, Home } from 'lucide-react';
 
 interface SocietyItem {
   id: string;
@@ -18,6 +18,20 @@ interface SocietyItem {
   city: string;
   state: string;
   address: string;
+}
+
+interface BuildingItem {
+  id: string;
+  name: string;
+}
+
+interface UnitItem {
+  id: string;
+  unit_number: string;
+  unit_type: string;
+  status: string;
+  building_id?: string;
+  building_name?: string;
 }
 
 function JoinSocietyContent() {
@@ -31,10 +45,18 @@ function JoinSocietyContent() {
   const [selectedSocietyId, setSelectedSocietyId] = useState<string | null>(null);
   const [role, setRole] = useState<'resident' | 'tenant'>('resident');
 
+  // Structural hierarchy state (Wings & Flats)
+  const [buildings, setBuildings] = useState<BuildingItem[]>([]);
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
+  const [units, setUnits] = useState<UnitItem[]>([]);
+  const [selectedUnitId, setSelectedUnitId] = useState<string>('');
+  const [loadingStructure, setLoadingStructure] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch all societies for initial search
   useEffect(() => {
     let isMounted = true;
 
@@ -67,6 +89,51 @@ function JoinSocietyContent() {
     };
   }, []);
 
+  // When a society is selected, fetch its Wings and Flats
+  useEffect(() => {
+    if (!selectedSocietyId) {
+      setBuildings([]);
+      setSelectedBuildingId('');
+      setUnits([]);
+      setSelectedUnitId('');
+      return;
+    }
+
+    let isMounted = true;
+    const fetchWingsAndFlats = async () => {
+      setLoadingStructure(true);
+      try {
+        const [bRes, uRes] = await Promise.allSettled([
+          apiClient.get(`/societies/${selectedSocietyId}/buildings`),
+          apiClient.get(`/societies/${selectedSocietyId}/units`),
+        ]);
+
+        if (isMounted) {
+          if (bRes.status === 'fulfilled') {
+            const list = bRes.value.data?.data || bRes.value.data || [];
+            setBuildings(Array.isArray(list) ? list : []);
+          }
+          if (uRes.status === 'fulfilled') {
+            const list = uRes.value.data?.data || uRes.value.data || [];
+            setUnits(Array.isArray(list) ? list : []);
+          }
+        }
+      } catch {
+        // Fallback gracefully
+      } finally {
+        if (isMounted) {
+          setLoadingStructure(false);
+        }
+      }
+    };
+
+    fetchWingsAndFlats();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedSocietyId]);
+
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSocietyId) {
@@ -80,6 +147,7 @@ function JoinSocietyContent() {
     try {
       await apiClient.post('/societies/membership/request', {
         society_id: selectedSocietyId,
+        unit_id: selectedUnitId || undefined,
         role,
       });
 
@@ -107,6 +175,11 @@ function JoinSocietyContent() {
       s.address?.toLowerCase().includes(term)
     );
   });
+
+  // Filter units for selected wing/building
+  const availableUnits = selectedBuildingId
+    ? units.filter((u) => u.building_id === selectedBuildingId)
+    : units;
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-black font-sans">
@@ -145,7 +218,7 @@ function JoinSocietyContent() {
             <CardHeader className="text-center">
               <CardTitle className="text-2xl font-bold">Find & Join Your Society</CardTitle>
               <CardDescription>
-                Select the residential complex where your flat is located to request membership.
+                Select your residential complex, wing, and flat number to request verification.
               </CardDescription>
             </CardHeader>
 
@@ -158,9 +231,9 @@ function JoinSocietyContent() {
               )}
 
               <form onSubmit={handleJoin} className="space-y-5">
-                {/* Search Input */}
+                {/* 1. Search Input */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="search">Search Society</Label>
+                  <Label htmlFor="search">1. Search Society</Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
                     <Input
@@ -174,7 +247,7 @@ function JoinSocietyContent() {
                   </div>
                 </div>
 
-                {/* Society List */}
+                {/* Society Selection List */}
                 <div className="space-y-1.5">
                   <Label>Available Societies</Label>
                   {loading ? (
@@ -189,13 +262,17 @@ function JoinSocietyContent() {
                         : 'No societies match your search query.'}
                     </div>
                   ) : (
-                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                    <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                       {filteredSocieties.map((s) => {
                         const isSelected = selectedSocietyId === s.id;
                         return (
                           <div
                             key={s.id}
-                            onClick={() => setSelectedSocietyId(s.id)}
+                            onClick={() => {
+                              setSelectedSocietyId(s.id);
+                              setSelectedBuildingId('');
+                              setSelectedUnitId('');
+                            }}
                             className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start justify-between ${
                               isSelected
                                 ? 'border-zinc-900 bg-zinc-50 dark:border-zinc-100 dark:bg-zinc-900'
@@ -224,9 +301,73 @@ function JoinSocietyContent() {
                   )}
                 </div>
 
-                {/* Residency Type / Role */}
-                <div className="space-y-1.5">
-                  <Label>Your Residency Type</Label>
+                {/* 2. Wing & Flat Selection (Populated when Society is chosen) */}
+                {selectedSocietyId && (
+                  <div className="space-y-3 pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                    <Label className="block font-semibold text-sm">2. Select Your Flat Details</Label>
+
+                    {loadingStructure ? (
+                      <div className="flex items-center justify-center py-6 gap-2 text-xs text-zinc-500">
+                        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+                        <span>Loading society wings & flats...</span>
+                      </div>
+                    ) : buildings.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="wing" className="text-xs text-zinc-500">
+                            Wing / Tower
+                          </Label>
+                          <select
+                            id="wing"
+                            value={selectedBuildingId}
+                            onChange={(e) => {
+                              setSelectedBuildingId(e.target.value);
+                              setSelectedUnitId('');
+                            }}
+                            className="w-full h-10 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 text-sm"
+                          >
+                            <option value="">-- All Wings / Towers --</option>
+                            {buildings.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label htmlFor="flat" className="text-xs text-zinc-500">
+                            Flat / Unit Number
+                          </Label>
+                          <select
+                            id="flat"
+                            value={selectedUnitId}
+                            onChange={(e) => setSelectedUnitId(e.target.value)}
+                            className="w-full h-10 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 text-sm"
+                          >
+                            <option value="">-- Select Flat Number --</option>
+                            {availableUnits.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.building_name ? `${u.building_name} - ` : ''}Flat {u.unit_number} ({u.status})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 flex items-center gap-2">
+                        <Home className="h-4 w-4 shrink-0 text-zinc-400" />
+                        <span>
+                          The society admin has not configured specific wings or flats yet. You can submit a general membership request.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 3. Residency Type / Role */}
+                <div className="space-y-1.5 pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                  <Label>3. Residency Type</Label>
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
@@ -238,7 +379,7 @@ function JoinSocietyContent() {
                       }`}
                     >
                       <span className="block font-semibold">Flat Owner</span>
-                      <span className="text-xs text-zinc-500">I own a flat in this society</span>
+                      <span className="text-xs text-zinc-500">I own this flat</span>
                     </button>
                     <button
                       type="button"
@@ -250,7 +391,7 @@ function JoinSocietyContent() {
                       }`}
                     >
                       <span className="block font-semibold">Tenant</span>
-                      <span className="text-xs text-zinc-500">I am renting a flat here</span>
+                      <span className="text-xs text-zinc-500">I am renting this flat</span>
                     </button>
                   </div>
                 </div>

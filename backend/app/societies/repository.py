@@ -142,6 +142,9 @@ class SocietyRepository:
     ) -> List[UnitModel]:
         query = (
             select(UnitModel)
+            .options(
+                selectinload(UnitModel.floor).selectinload(FloorModel.building)
+            )
             .join(FloorModel, UnitModel.floor_id == FloorModel.id)
             .join(BuildingModel, FloorModel.building_id == BuildingModel.id)
             .where(BuildingModel.society_id == society_id)
@@ -272,9 +275,19 @@ class SocietyRepository:
 
     async def list_pending_memberships(self, society_id: uuid.UUID) -> List[UserSocietyRoleModel]:
         """List all pending membership requests for a society."""
-        query = select(UserSocietyRoleModel).where(
-            UserSocietyRoleModel.society_id == society_id,
-            UserSocietyRoleModel.status == MembershipStatus.PENDING.value
+        query = (
+            select(UserSocietyRoleModel)
+            .options(
+                selectinload(UserSocietyRoleModel.user),
+                selectinload(UserSocietyRoleModel.unit)
+                    .selectinload(UnitModel.floor)
+                    .selectinload(FloorModel.building),
+            )
+            .where(
+                UserSocietyRoleModel.society_id == society_id,
+                UserSocietyRoleModel.status == MembershipStatus.PENDING.value
+            )
+            .order_by(UserSocietyRoleModel.created_at.desc())
         )
         result = await self.db.execute(query)
         return list(result.scalars().all())
