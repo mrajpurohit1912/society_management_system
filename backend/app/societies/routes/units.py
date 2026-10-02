@@ -106,8 +106,39 @@ async def update_unit(
 
     service = routes.UnitService(db)
     async with safe_transaction(db):
-        res = await service.update_unit(unit_id, payload)
+        res = await service.update_unit(floor_id, unit_id, payload)
         return {"success": True, "message": "Unit updated successfully", "data": res}
+
+
+@router.delete("/{society_id}/buildings/{building_id}/floors/{floor_id}/units/{unit_id}", response_model=ApiResponse[dict])
+async def delete_unit(
+    society_id: uuid.UUID,
+    building_id: uuid.UUID,
+    floor_id: uuid.UUID,
+    unit_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin),
+):
+    f_service = routes.FloorService(db)
+    floor = await f_service.get_floor(floor_id)
+    if floor.building_id != building_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Floor does not belong to the specified building.",
+        )
+
+    b_service = routes.BuildingService(db)
+    building = await b_service.get_building(building_id)
+    if building.society_id != society_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Building does not belong to the specified society.",
+        )
+
+    service = routes.UnitService(db)
+    async with safe_transaction(db):
+        await service.delete_unit(floor_id, unit_id)
+        return {"success": True, "message": "Unit deleted successfully", "data": {}}
 
 
 @router.get("/{society_id}/units")

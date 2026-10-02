@@ -46,3 +46,12 @@ class UnitService(BaseSocietyService):
         for key, value in update_data.items():
             setattr(unit, key, value)
         return unit
+
+    async def delete_unit(self, floor_id: uuid.UUID, unit_id: uuid.UUID) -> None:
+        unit = await self.get_unit(unit_id)
+        if unit.floor_id != floor_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unit does not belong to the specified floor.",
+            )
+        await self.repo.delete_unit(unit)

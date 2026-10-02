@@ -3,7 +3,7 @@ from typing import List
 from fastapi import HTTPException, status
 
 from app.societies.models import FloorModel
-from app.societies.schemas import FloorCreate
+from app.societies.schemas import FloorCreate, FloorUpdate
 from app.societies.services.base import BaseSocietyService
 
 
@@ -34,3 +34,24 @@ class FloorService(BaseSocietyService):
 
     async def list_floors(self, building_id: uuid.UUID) -> List[FloorModel]:
         return await self.repo.list_floors(building_id)
+
+    async def update_floor(self, building_id: uuid.UUID, floor_id: uuid.UUID, data: FloorUpdate) -> FloorModel:
+        floor = await self.get_floor(floor_id)
+        if floor.building_id != building_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Floor does not belong to the specified building.",
+            )
+        update_data = data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(floor, key, value)
+        return floor
+
+    async def delete_floor(self, building_id: uuid.UUID, floor_id: uuid.UUID) -> None:
+        floor = await self.get_floor(floor_id)
+        if floor.building_id != building_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Floor does not belong to the specified building.",
+            )
+        await self.repo.delete_floor(floor)

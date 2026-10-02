@@ -21,6 +21,9 @@ import {
   DoorOpen,
   Sliders,
   Plus,
+  Trash2,
+  Pencil,
+  X,
 } from 'lucide-react';
 
 interface Building {
@@ -74,9 +77,11 @@ export default function AdminUnitsPage() {
   const [showFloorCustomizer, setShowFloorCustomizer] = useState(false);
   const [customFloorList, setCustomFloorList] = useState<FloorOverride[]>([]);
 
-  // Single Building State
+  // Single Building State (Add / Edit)
   const [showAddBuilding, setShowAddBuilding] = useState(false);
   const [newBuildingName, setNewBuildingName] = useState('');
+  const [showEditBuildingModal, setShowEditBuildingModal] = useState(false);
+  const [editBuildingName, setEditBuildingName] = useState('');
 
   // Add Floor State (to selected building)
   const [showAddFloorModal, setShowAddFloorModal] = useState(false);
@@ -84,13 +89,23 @@ export default function AdminUnitsPage() {
   const [newFloorName, setNewFloorName] = useState('Floor 1');
   const [newFloorUnitsCount, setNewFloorUnitsCount] = useState(4);
 
+  // Edit Floor State
+  const [editingFloor, setEditingFloor] = useState<Floor | null>(null);
+  const [editFloorName, setEditFloorName] = useState('');
+
   // Add Unit State (to specific floor)
   const [targetFloorForUnit, setTargetFloorForUnit] = useState<Floor | null>(null);
   const [newUnitNumber, setNewUnitNumber] = useState('');
   const [newUnitType, setNewUnitType] = useState('flat');
   const [newUnitStatus, setNewUnitStatus] = useState('vacant');
 
-  // Quick Populate Existing Wing State
+  // Edit Unit State
+  const [editingUnit, setEditingUnit] = useState<{ unit: Unit; floorId: string } | null>(null);
+  const [editUnitNumber, setEditUnitNumber] = useState('');
+  const [editUnitType, setEditUnitType] = useState('flat');
+  const [editUnitStatus, setEditUnitStatus] = useState('vacant');
+
+  // Quick Populate Existing Wing State (1 API call)
   const [showQuickPopulateModal, setShowQuickPopulateModal] = useState(false);
   const [quickFloors, setQuickFloors] = useState(5);
   const [quickUnitsPerFloor, setQuickUnitsPerFloor] = useState(4);
@@ -186,7 +201,6 @@ export default function AdminUnitsPage() {
     e.preventDefault();
     if (!societyId) return;
 
-    // 1. Client-Side Duplicate Wing Name Validation
     const cleanName = bulkTowerName.trim();
     if (buildings.some((b) => b.name.trim().toLowerCase() === cleanName.toLowerCase())) {
       setFeedback({
@@ -244,7 +258,6 @@ export default function AdminUnitsPage() {
 
     const cleanName = newBuildingName.trim();
 
-    // 1. Client-Side Duplicate Wing Name Validation
     if (buildings.some((b) => b.name.trim().toLowerCase() === cleanName.toLowerCase())) {
       setFeedback({
         type: 'error',
@@ -271,6 +284,78 @@ export default function AdminUnitsPage() {
         setFeedback({ type: 'error', message: err.message });
       } else {
         setFeedback({ type: 'error', message: 'Failed to create building.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Update Building Name
+  const handleUpdateBuilding = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!societyId || !selectedBuilding || !editBuildingName.trim()) return;
+
+    const cleanName = editBuildingName.trim();
+    if (
+      buildings.some(
+        (b) => b.id !== selectedBuilding.id && b.name.trim().toLowerCase() === cleanName.toLowerCase()
+      )
+    ) {
+      setFeedback({
+        type: 'error',
+        message: `A building or wing named "${cleanName}" already exists.`,
+      });
+      return;
+    }
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      const res = await apiClient.patch(`/societies/${societyId}/buildings/${selectedBuilding.id}`, {
+        name: cleanName,
+      });
+      const updated = res.data?.data || res.data;
+      setFeedback({ type: 'success', message: `Building renamed to "${updated.name}" successfully!` });
+      setShowEditBuildingModal(false);
+      setSelectedBuilding(updated);
+      await fetchBuildings();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to rename building.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Delete Building / Wing
+  const handleDeleteBuilding = async () => {
+    if (!societyId || !selectedBuilding) return;
+    if (
+      !confirm(
+        `Are you sure you want to delete "${selectedBuilding.name}"? All its floors and flats will be permanently removed.`
+      )
+    ) {
+      return;
+    }
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      await apiClient.delete(`/societies/${societyId}/buildings/${selectedBuilding.id}`);
+      setFeedback({ type: 'success', message: `Building "${selectedBuilding.name}" deleted successfully!` });
+      const remaining = buildings.filter((b) => b.id !== selectedBuilding.id);
+      setBuildings(remaining);
+      setSelectedBuilding(remaining.length > 0 ? remaining[0] : null);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to delete building.' });
       }
     } finally {
       setActionLoading(false);
@@ -327,6 +412,63 @@ export default function AdminUnitsPage() {
     }
   };
 
+  // Update Floor Name
+  const handleUpdateFloor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!societyId || !selectedBuilding || !editingFloor) return;
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      await apiClient.patch(
+        `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${editingFloor.id}`,
+        {
+          floor_name: editFloorName.trim(),
+        }
+      );
+
+      setFeedback({ type: 'success', message: 'Floor updated successfully!' });
+      setEditingFloor(null);
+      await refreshFloorsAndUnits();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to update floor.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Delete Floor
+  const handleDeleteFloor = async (floorId: string, floorName: string) => {
+    if (!societyId || !selectedBuilding) return;
+    if (!confirm(`Are you sure you want to delete ${floorName}? All flats on this floor will also be deleted.`)) {
+      return;
+    }
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      await apiClient.delete(
+        `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${floorId}`
+      );
+      setFeedback({ type: 'success', message: `${floorName} deleted successfully!` });
+      await refreshFloorsAndUnits();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to delete floor.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Add Single Flat / Unit to Floor
   const handleCreateUnit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -363,7 +505,65 @@ export default function AdminUnitsPage() {
     }
   };
 
-  // Quick Populate Empty Wing
+  // Update Flat / Unit
+  const handleUpdateUnit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!societyId || !selectedBuilding || !editingUnit || !editUnitNumber.trim()) return;
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      await apiClient.patch(
+        `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${editingUnit.floorId}/units/${editingUnit.unit.id}`,
+        {
+          unit_number: editUnitNumber.trim(),
+          unit_type: editUnitType,
+          status: editUnitStatus,
+        }
+      );
+
+      setFeedback({ type: 'success', message: `Flat ${editUnitNumber.trim()} updated successfully!` });
+      setEditingUnit(null);
+      await refreshFloorsAndUnits();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to update flat.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Delete Flat / Unit
+  const handleDeleteUnit = async () => {
+    if (!societyId || !selectedBuilding || !editingUnit) return;
+    if (!confirm(`Are you sure you want to delete Flat ${editingUnit.unit.unit_number}?`)) return;
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      await apiClient.delete(
+        `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${editingUnit.floorId}/units/${editingUnit.unit.id}`
+      );
+      setFeedback({ type: 'success', message: `Flat ${editingUnit.unit.unit_number} deleted successfully!` });
+      setEditingUnit(null);
+      await refreshFloorsAndUnits();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to delete flat.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Quick Populate Empty Wing in 1 Single API Call!
   const handleQuickPopulateWing = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!societyId || !selectedBuilding) return;
@@ -372,33 +572,18 @@ export default function AdminUnitsPage() {
     setFeedback(null);
 
     try {
-      for (let f = 0; f <= quickFloors; f++) {
-        const floorName = f === 0 ? 'Ground Floor' : `Floor ${f}`;
-        const floorRes = await apiClient.post(
-          `/societies/${societyId}/buildings/${selectedBuilding.id}/floors`,
-          {
-            floor_number: f,
-            floor_name: floorName,
-          }
-        );
-        const createdFloor = floorRes.data?.data || floorRes.data;
-
-        for (let u = 1; u <= quickUnitsPerFloor; u++) {
-          const unitNumber = `${f}${String(u).padStart(2, '0')}`;
-          await apiClient.post(
-            `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${createdFloor.id}/units`,
-            {
-              unit_number: unitNumber,
-              unit_type: 'flat',
-              status: 'vacant',
-            }
-          );
+      // 1 single atomic bulk API call (no loop of 450 requests!)
+      await apiClient.post(
+        `/societies/${societyId}/buildings/${selectedBuilding.id}/populate`,
+        {
+          number_of_floors: Number(quickFloors),
+          units_per_floor: Number(quickUnitsPerFloor),
         }
-      }
+      );
 
       setFeedback({
         type: 'success',
-        message: `Successfully populated ${selectedBuilding.name} with ${quickFloors + 1} floors and ${(quickFloors + 1) * quickUnitsPerFloor} flats!`,
+        message: `Successfully populated ${selectedBuilding.name} with ${Number(quickFloors) + 1} floors and ${(Number(quickFloors) + 1) * Number(quickUnitsPerFloor)} flats in 1 request!`,
       });
       setShowQuickPopulateModal(false);
       await refreshFloorsAndUnits();
@@ -429,19 +614,46 @@ export default function AdminUnitsPage() {
 
         <div className="flex items-center gap-2">
           {selectedBuilding && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setNewFloorNumber(floors.length);
-                setNewFloorName(`Floor ${floors.length}`);
-                setShowAddFloorModal(true);
-              }}
-              className="flex items-center gap-1.5 h-8 text-xs font-medium"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Add Floor</span>
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setNewFloorNumber(floors.length);
+                  setNewFloorName(`Floor ${floors.length}`);
+                  setShowAddFloorModal(true);
+                }}
+                className="flex items-center gap-1.5 h-8 text-xs font-medium"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Floor</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditBuildingName(selectedBuilding.name);
+                  setShowEditBuildingModal(true);
+                }}
+                className="flex items-center gap-1.5 h-8 text-xs"
+                title="Rename Wing"
+              >
+                <Pencil className="h-3.5 w-3.5 text-zinc-500" />
+                <span className="hidden sm:inline">Rename Wing</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleDeleteBuilding}
+                className="flex items-center gap-1.5 h-8 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                title="Delete Wing"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Delete Wing</span>
+              </Button>
+            </>
           )}
 
           <Button
@@ -481,6 +693,41 @@ export default function AdminUnitsPage() {
           )}
           <span>{feedback.message}</span>
         </div>
+      )}
+
+      {/* Edit Building Name Modal */}
+      {showEditBuildingModal && selectedBuilding && (
+        <Card className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-indigo-600" />
+              <span>Rename Wing &quot;{selectedBuilding.name}&quot;</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleUpdateBuilding} className="flex gap-2">
+              <Input
+                value={editBuildingName}
+                onChange={(e) => setEditBuildingName(e.target.value)}
+                placeholder="New Wing Name (e.g. Tower C)"
+                required
+                className="h-9 text-sm max-w-sm bg-white dark:bg-zinc-950"
+              />
+              <Button type="submit" size="sm" disabled={actionLoading} className="h-9 text-xs">
+                {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEditBuildingModal(false)}
+                className="h-9 text-xs"
+              >
+                Cancel
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {/* Bulk Provisioning Modal Drawer */}
@@ -745,6 +992,41 @@ export default function AdminUnitsPage() {
         </Card>
       )}
 
+      {/* Edit Floor Modal */}
+      {editingFloor && selectedBuilding && (
+        <Card className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-indigo-600" />
+              <span>Edit Floor {editingFloor.floor_number} Name</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleUpdateFloor} className="flex gap-2">
+              <Input
+                value={editFloorName}
+                onChange={(e) => setEditFloorName(e.target.value)}
+                placeholder="Floor Name (e.g. Ground Floor, Penthouse)"
+                required
+                className="h-9 text-sm max-w-sm bg-white dark:bg-zinc-950"
+              />
+              <Button type="submit" size="sm" disabled={actionLoading} className="h-9 text-xs">
+                {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setEditingFloor(null)}
+                className="h-9 text-xs"
+              >
+                Cancel
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Add Single Flat Modal */}
       {targetFloorForUnit && selectedBuilding && (
         <Card className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60">
@@ -814,7 +1096,96 @@ export default function AdminUnitsPage() {
         </Card>
       )}
 
-      {/* Quick Populate Wing Modal */}
+      {/* Edit or Delete Flat Modal */}
+      {editingUnit && selectedBuilding && (
+        <Card className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Pencil className="h-4 w-4 text-indigo-600" />
+                <span>Edit Flat {editingUnit.unit.unit_number}</span>
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditingUnit(null)}
+                className="h-6 w-6 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleUpdateUnit} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Flat / Unit Number</Label>
+                <Input
+                  value={editUnitNumber}
+                  onChange={(e) => setEditUnitNumber(e.target.value)}
+                  required
+                  className="h-8 text-xs bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Unit Type</Label>
+                <select
+                  value={editUnitType}
+                  onChange={(e) => setEditUnitType(e.target.value)}
+                  className="w-full h-8 text-xs border rounded-md px-2 bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800"
+                >
+                  <option value="flat">Flat / Apartment</option>
+                  <option value="penthouse">Penthouse</option>
+                  <option value="villa">Villa</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Occupancy Status</Label>
+                <select
+                  value={editUnitStatus}
+                  onChange={(e) => setEditUnitStatus(e.target.value)}
+                  className="w-full h-8 text-xs border rounded-md px-2 bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800"
+                >
+                  <option value="vacant">Vacant</option>
+                  <option value="occupied">Occupied</option>
+                  <option value="maintenance">Under Maintenance</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-3 flex justify-between items-center pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeleteUnit}
+                  className="h-8 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 flex items-center gap-1"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  <span>Delete Flat</span>
+                </Button>
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditingUnit(null)}
+                    className="h-8 text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" disabled={actionLoading} className="h-8 text-xs">
+                    {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Changes'}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Populate Wing Modal (1 Single Fast API Call) */}
       {showQuickPopulateModal && selectedBuilding && (
         <Card className="border border-indigo-300 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20">
           <CardHeader className="pb-2">
@@ -823,7 +1194,7 @@ export default function AdminUnitsPage() {
               <span>Quick-Populate Floors & Flats for &quot;{selectedBuilding.name}&quot;</span>
             </CardTitle>
             <CardDescription className="text-xs">
-              Generate floors and flats directly into this wing without creating another wing.
+              Generate all floors and flats in 1 single instantaneous database transaction.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -865,7 +1236,7 @@ export default function AdminUnitsPage() {
                   Cancel
                 </Button>
                 <Button type="submit" size="sm" disabled={actionLoading} className="h-8 text-xs bg-indigo-600 text-white">
-                  {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : `Generate ${(quickFloors + 1) * quickUnitsPerFloor} Flats`}
+                  {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : `Generate ${(quickFloors + 1) * quickUnitsPerFloor} Flats (1 Call)`}
                 </Button>
               </div>
             </form>
@@ -928,7 +1299,7 @@ export default function AdminUnitsPage() {
                 No floors found in {selectedBuilding?.name}
               </p>
               <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto mb-4">
-                You can populate standard floors and flats into this wing in 1 click, or add floors one by one.
+                You can populate standard floors and flats into this wing in 1 instant API call, or add floors one by one.
               </p>
               <div className="flex justify-center gap-2">
                 <Button
@@ -971,18 +1342,45 @@ export default function AdminUnitsPage() {
                         </Badge>
                       </div>
 
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setTargetFloorForUnit(floor);
-                          setNewUnitNumber(`${floor.floor_number}${String(units.length + 1).padStart(2, '0')}`);
-                        }}
-                        className="h-7 text-xs px-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950 flex items-center gap-1"
-                      >
-                        <Plus className="h-3 w-3" />
-                        <span>Add Flat</span>
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingFloor(floor);
+                            setEditFloorName(floor.floor_name || `Floor ${floor.floor_number}`);
+                          }}
+                          className="h-7 text-xs px-2 text-zinc-500 hover:text-zinc-700 flex items-center gap-1"
+                          title="Rename Floor"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          <span className="hidden sm:inline">Rename</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteFloor(floor.id, floor.floor_name || `Floor ${floor.floor_number}`)}
+                          className="h-7 text-xs px-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 flex items-center gap-1"
+                          title="Delete Floor"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          <span className="hidden sm:inline">Delete</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setTargetFloorForUnit(floor);
+                            setNewUnitNumber(`${floor.floor_number}${String(units.length + 1).padStart(2, '0')}`);
+                          }}
+                          className="h-7 text-xs px-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950 flex items-center gap-1"
+                        >
+                          <Plus className="h-3 w-3" />
+                          <span>Add Flat</span>
+                        </Button>
+                      </div>
                     </CardHeader>
                     <CardContent className="p-4">
                       {units.length === 0 ? (
@@ -1008,11 +1406,18 @@ export default function AdminUnitsPage() {
                             return (
                               <div
                                 key={unit.id}
-                                className={`p-3 rounded-lg border flex flex-col justify-between transition-all ${
+                                onClick={() => {
+                                  setEditingUnit({ unit, floorId: floor.id });
+                                  setEditUnitNumber(unit.unit_number);
+                                  setEditUnitType(unit.unit_type);
+                                  setEditUnitStatus(unit.status);
+                                }}
+                                className={`p-3 rounded-lg border flex flex-col justify-between transition-all cursor-pointer hover:shadow-sm ${
                                   isOccupied
-                                    ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/20'
-                                    : 'border-zinc-200 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-900/40'
+                                    ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/20 hover:border-emerald-300'
+                                    : 'border-zinc-200 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-900/40 hover:border-zinc-300'
                                 }`}
+                                title="Click to Edit or Delete Flat"
                               >
                                 <div className="flex items-center justify-between">
                                   <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-1">
@@ -1032,7 +1437,7 @@ export default function AdminUnitsPage() {
                                 </div>
                                 <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
                                   <span className="capitalize">{unit.unit_type}</span>
-                                  <ChevronRight className="h-3 w-3 text-zinc-400" />
+                                  <Pencil className="h-3 w-3 text-zinc-400 opacity-60 hover:opacity-100" />
                                 </div>
                               </div>
                             );

@@ -49,3 +49,12 @@ class BuildingService(BaseSocietyService):
         for key, value in update_data.items():
             setattr(building, key, value)
         return building
+
+    async def delete_building(self, society_id: uuid.UUID, building_id: uuid.UUID) -> None:
+        building = await self.get_building(building_id)
+        if building.society_id != society_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Building does not belong to the specified society.",
+            )
+        await self.repo.delete_building(building)

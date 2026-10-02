@@ -11,7 +11,9 @@ from app.societies.schemas import (
     BuildingCreate,
     BuildingUpdate,
     BuildingResponse,
+    BuildingPopulateRequest,
     FloorCreate,
+    FloorUpdate,
     FloorResponse,
     BulkProvisionRequest,
 )
@@ -57,6 +59,19 @@ async def update_building(
     async with safe_transaction(db):
         res = await service.update_building(society_id, building_id, payload)
         return {"success": True, "message": "Building updated successfully", "data": res}
+
+
+@router.delete("/{society_id}/buildings/{building_id}", response_model=ApiResponse[dict])
+async def delete_building(
+    society_id: uuid.UUID,
+    building_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin),
+):
+    service = routes.BuildingService(db)
+    async with safe_transaction(db):
+        await service.delete_building(society_id, building_id)
+        return {"success": True, "message": "Building deleted successfully", "data": {}}
 
 
 @router.post("/{society_id}/buildings/{building_id}/floors", response_model=ApiResponse[FloorResponse], status_code=status.HTTP_201_CREATED)
@@ -112,3 +127,60 @@ async def provision_society_structure(
     async with safe_transaction(db):
         res = await service.provision_society_structure(society_id, payload)
         return {"success": True, "message": "Society structure provisioned successfully", "data": res}
+
+
+@router.patch("/{society_id}/buildings/{building_id}/floors/{floor_id}", response_model=ApiResponse[FloorResponse])
+async def update_floor(
+    society_id: uuid.UUID,
+    building_id: uuid.UUID,
+    floor_id: uuid.UUID,
+    payload: FloorUpdate,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin),
+):
+    b_service = routes.BuildingService(db)
+    building = await b_service.get_building(building_id)
+    if building.society_id != society_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Building does not belong to the specified society.",
+        )
+    service = routes.FloorService(db)
+    async with safe_transaction(db):
+        res = await service.update_floor(building_id, floor_id, payload)
+        return {"success": True, "message": "Floor updated successfully", "data": res}
+
+
+@router.delete("/{society_id}/buildings/{building_id}/floors/{floor_id}", response_model=ApiResponse[dict])
+async def delete_floor(
+    society_id: uuid.UUID,
+    building_id: uuid.UUID,
+    floor_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin),
+):
+    b_service = routes.BuildingService(db)
+    building = await b_service.get_building(building_id)
+    if building.society_id != society_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Building does not belong to the specified society.",
+        )
+    service = routes.FloorService(db)
+    async with safe_transaction(db):
+        await service.delete_floor(building_id, floor_id)
+        return {"success": True, "message": "Floor deleted successfully", "data": {}}
+
+
+@router.post("/{society_id}/buildings/{building_id}/populate", response_model=ApiResponse[BuildingResponse], status_code=status.HTTP_201_CREATED)
+async def populate_building(
+    society_id: uuid.UUID,
+    building_id: uuid.UUID,
+    payload: BuildingPopulateRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(require_society_admin),
+):
+    service = routes.BulkProvisionService(db)
+    async with safe_transaction(db):
+        res = await service.populate_existing_building(society_id, building_id, payload)
+        return {"success": True, "message": "Building populated successfully", "data": res}

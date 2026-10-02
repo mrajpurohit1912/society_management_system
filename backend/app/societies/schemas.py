@@ -81,6 +81,10 @@ class FloorCreate(BaseModel):
     floor_number: int
     floor_name: Optional[str] = None
 
+class FloorUpdate(BaseModel):
+    floor_number: Optional[int] = None
+    floor_name: Optional[str] = None
+
 class FloorResponse(BaseSchema):
     id: uuid.UUID
     building_id: uuid.UUID
@@ -174,3 +178,8 @@ class BuildingProvision(BaseModel):
 
 class BulkProvisionRequest(BaseModel):
     buildings: List[BuildingProvision]
+
+class BuildingPopulateRequest(BaseModel):
+    number_of_floors: int = Field(..., ge=1, le=150)
+    units_per_floor: int = Field(..., ge=1, le=50)
+    custom_floors: Optional[List[FloorProvisionOverride]] = None

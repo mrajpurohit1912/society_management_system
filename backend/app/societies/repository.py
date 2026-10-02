@@ -78,6 +78,10 @@ class SocietyRepository:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def delete_building(self, building: BuildingModel) -> None:
+        await self.db.delete(building)
+        await self.db.flush()
+
     # --- Floor Operations ---
     async def create_floor(self, building_id: uuid.UUID, data) -> FloorModel:
         floor = FloorModel(
@@ -106,6 +110,10 @@ class SocietyRepository:
         query = select(FloorModel).where(FloorModel.building_id == building_id).order_by(FloorModel.floor_number)
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def delete_floor(self, floor: FloorModel) -> None:
+        await self.db.delete(floor)
+        await self.db.flush()
 
     # --- Unit/Flat Operations ---
     async def create_unit(self, floor_id: uuid.UUID, data) -> UnitModel:
@@ -136,6 +144,10 @@ class SocietyRepository:
         query = select(UnitModel).where(UnitModel.floor_id == floor_id).order_by(UnitModel.unit_number)
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def delete_unit(self, unit: UnitModel) -> None:
+        await self.db.delete(unit)
+        await self.db.flush()
 
     async def list_all_units_in_society(
         self, society_id: uuid.UUID, building_id: Optional[uuid.UUID] = None
