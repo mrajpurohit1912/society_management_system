@@ -158,11 +158,19 @@ class UserSocietyRoleResponse(BaseSchema):
     role: str
     created_at: datetime
 
+  
+class FloorProvisionOverride(BaseModel):
+    floor_number: int = Field(..., ge=0, le=150)
+    floor_name: Optional[str] = None
+    units_count: int = Field(..., ge=0, le=50)
+    unit_prefix: Optional[str] = None
+
 # --- Bulk Provisioning Schemas ---
 class BuildingProvision(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     number_of_floors: int = Field(..., ge=1, le=150)
     units_per_floor: int = Field(..., ge=1, le=50)
+    custom_floors: Optional[List[FloorProvisionOverride]] = None
 
 class BulkProvisionRequest(BaseModel):
     buildings: List[BuildingProvision]

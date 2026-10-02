@@ -15,6 +15,15 @@ class BuildingService(BaseSocietyService):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Parent society not found.",
             )
+
+        existing_buildings = await self.repo.list_buildings(society_id)     
+        normalized_name = data.name.strip().lower()
+        if any(b.name.strip().lower() == normalized_name for b in existing_buildings):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Building with name '{data.name}' already exists in the society.",
+            )
+        
         return await self.repo.create_building(society_id, data)
 
     async def get_building(self, building_id: uuid.UUID) -> BuildingModel:

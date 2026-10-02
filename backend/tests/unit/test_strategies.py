@@ -308,9 +308,9 @@ async def test_admin_signup_success(mock_user_repo_cls, mock_db, user_mock):
         provider="email", identifier="admin@example.com"
     )
     mock_repo_inst.create_user_with_credentials.assert_called_once()
-    # Check that it passed role="admin"
+    # Check that it passed role="platform_admin"
     args, kwargs = mock_repo_inst.create_user_with_credentials.call_args
-    assert kwargs.get("role") == "admin"
+    assert kwargs.get("role") == "platform_admin"
     assert result == user_mock
 
 

@@ -19,6 +19,8 @@ import {
   Sparkles,
   ChevronRight,
   DoorOpen,
+  Sliders,
+  Plus,
 } from 'lucide-react';
 
 interface Building {
@@ -43,6 +45,13 @@ interface Unit {
   status: string;
 }
 
+interface FloorOverride {
+  floor_number: number;
+  floor_name: string;
+  units_count: number;
+  unit_prefix: string;
+}
+
 export default function AdminUnitsPage() {
   const user = useAuthStore((state) => state.user);
   const societyId = user?.active_society_id;
@@ -62,10 +71,45 @@ export default function AdminUnitsPage() {
   const [bulkTowerName, setBulkTowerName] = useState('Tower A');
   const [bulkNumFloors, setBulkNumFloors] = useState(5);
   const [bulkUnitsPerFloor, setBulkUnitsPerFloor] = useState(4);
+  const [showFloorCustomizer, setShowFloorCustomizer] = useState(false);
+  const [customFloorList, setCustomFloorList] = useState<FloorOverride[]>([]);
 
   // Single Building State
   const [showAddBuilding, setShowAddBuilding] = useState(false);
   const [newBuildingName, setNewBuildingName] = useState('');
+
+  // Add Floor State (to selected building)
+  const [showAddFloorModal, setShowAddFloorModal] = useState(false);
+  const [newFloorNumber, setNewFloorNumber] = useState(1);
+  const [newFloorName, setNewFloorName] = useState('Floor 1');
+  const [newFloorUnitsCount, setNewFloorUnitsCount] = useState(4);
+
+  // Add Unit State (to specific floor)
+  const [targetFloorForUnit, setTargetFloorForUnit] = useState<Floor | null>(null);
+  const [newUnitNumber, setNewUnitNumber] = useState('');
+  const [newUnitType, setNewUnitType] = useState('flat');
+  const [newUnitStatus, setNewUnitStatus] = useState('vacant');
+
+  // Quick Populate Existing Wing State
+  const [showQuickPopulateModal, setShowQuickPopulateModal] = useState(false);
+  const [quickFloors, setQuickFloors] = useState(5);
+  const [quickUnitsPerFloor, setQuickUnitsPerFloor] = useState(4);
+
+  // Synchronize Floor Customizer list whenever total floors or default units changes
+  useEffect(() => {
+    const list: FloorOverride[] = [];
+    for (let f = 0; f <= bulkNumFloors; f++) {
+      const defaultName = f === 0 ? 'Ground Floor' : `Floor ${f}`;
+      const defaultPrefix = f === 0 ? 'G' : '';
+      list.push({
+        floor_number: f,
+        floor_name: defaultName,
+        units_count: bulkUnitsPerFloor,
+        unit_prefix: defaultPrefix,
+      });
+    }
+    setCustomFloorList(list);
+  }, [bulkNumFloors, bulkUnitsPerFloor]);
 
   // Fetch Buildings
   const fetchBuildings = useCallback(async () => {
@@ -95,79 +139,92 @@ export default function AdminUnitsPage() {
   }, [fetchBuildings]);
 
   // Fetch Floors & Units for Selected Building
-  useEffect(() => {
+  const refreshFloorsAndUnits = useCallback(async () => {
     if (!societyId || !selectedBuilding) return;
 
-    let isMounted = true;
-    const fetchFloorsAndUnits = async () => {
-      setFloorsLoading(true);
-      try {
-        const floorRes = await apiClient.get(
-          `/societies/${societyId}/buildings/${selectedBuilding.id}/floors`
-        );
-        const floorList: Floor[] = floorRes.data?.data || floorRes.data || [];
-        if (!isMounted) return;
-        setFloors(Array.isArray(floorList) ? floorList : []);
+    setFloorsLoading(true);
+    try {
+      const floorRes = await apiClient.get(
+        `/societies/${societyId}/buildings/${selectedBuilding.id}/floors`
+      );
+      const floorList: Floor[] = floorRes.data?.data || floorRes.data || [];
+      setFloors(Array.isArray(floorList) ? floorList : []);
 
-        // Fetch units for each floor in parallel
-        const unitPromises = floorList.map(async (floor) => {
-          try {
-            const uRes = await apiClient.get(
-              `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${floor.id}/units`
-            );
-            const uList = uRes.data?.data || uRes.data || [];
-            return { floorId: floor.id, units: Array.isArray(uList) ? uList : [] };
-          } catch {
-            return { floorId: floor.id, units: [] };
-          }
-        });
+      const unitPromises = floorList.map(async (floor) => {
+        try {
+          const uRes = await apiClient.get(
+            `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${floor.id}/units`
+          );
+          const uList = uRes.data?.data || uRes.data || [];
+          return { floorId: floor.id, units: Array.isArray(uList) ? uList : [] };
+        } catch {
+          return { floorId: floor.id, units: [] };
+        }
+      });
 
-        const results = await Promise.all(unitPromises);
-        if (!isMounted) return;
-        const mapping: Record<string, Unit[]> = {};
-        for (const item of results) {
-          mapping[item.floorId] = item.units;
-        }
-        setUnitsByFloor(mapping);
-      } catch (err: unknown) {
-        if (err instanceof Error) {
-          setFeedback({ type: 'error', message: err.message });
-        }
-      } finally {
-        if (isMounted) setFloorsLoading(false);
+      const results = await Promise.all(unitPromises);
+      const mapping: Record<string, Unit[]> = {};
+      for (const item of results) {
+        mapping[item.floorId] = item.units;
       }
-    };
-
-    fetchFloorsAndUnits();
-
-    return () => {
-      isMounted = false;
-    };
+      setUnitsByFloor(mapping);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      }
+    } finally {
+      setFloorsLoading(false);
+    }
   }, [societyId, selectedBuilding]);
 
-  // Bulk Provision Action
+  useEffect(() => {
+    refreshFloorsAndUnits();
+  }, [refreshFloorsAndUnits]);
+
+  // Bulk Provision Action (With Duplicate Check & Custom Floors)
   const handleBulkProvision = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!societyId) return;
+
+    // 1. Client-Side Duplicate Wing Name Validation
+    const cleanName = bulkTowerName.trim();
+    if (buildings.some((b) => b.name.trim().toLowerCase() === cleanName.toLowerCase())) {
+      setFeedback({
+        type: 'error',
+        message: `A building or wing named "${cleanName}" already exists in this society. Please choose a different name.`,
+      });
+      return;
+    }
 
     setActionLoading(true);
     setFeedback(null);
 
     try {
+      const payload: any = {
+        name: cleanName,
+        number_of_floors: Number(bulkNumFloors),
+        units_per_floor: Number(bulkUnitsPerFloor),
+      };
+
+      if (showFloorCustomizer && customFloorList.length > 0) {
+        payload.custom_floors = customFloorList.map((cf) => ({
+          floor_number: cf.floor_number,
+          floor_name: cf.floor_name.trim(),
+          units_count: Number(cf.units_count),
+          unit_prefix: cf.unit_prefix.trim() || undefined,
+        }));
+      }
+
       await apiClient.post(`/societies/${societyId}/provision`, {
-        buildings: [
-          {
-            name: bulkTowerName.trim(),
-            number_of_floors: Number(bulkNumFloors),
-            units_per_floor: Number(bulkUnitsPerFloor),
-          },
-        ],
+        buildings: [payload],
       });
+
       setFeedback({
         type: 'success',
-        message: `Successfully provisioned ${bulkTowerName} with ${bulkNumFloors} floors and ${bulkNumFloors * bulkUnitsPerFloor} units!`,
+        message: `Successfully provisioned ${cleanName} with customized floors and flats!`,
       });
       setShowBulkModal(false);
+      setShowFloorCustomizer(false);
       await fetchBuildings();
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -180,17 +237,28 @@ export default function AdminUnitsPage() {
     }
   };
 
-  // Create Single Building
+  // Create Single Building (With Duplicate Check)
   const handleCreateBuilding = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!societyId || !newBuildingName.trim()) return;
+
+    const cleanName = newBuildingName.trim();
+
+    // 1. Client-Side Duplicate Wing Name Validation
+    if (buildings.some((b) => b.name.trim().toLowerCase() === cleanName.toLowerCase())) {
+      setFeedback({
+        type: 'error',
+        message: `A building or wing named "${cleanName}" already exists in this society. Please choose a unique name.`,
+      });
+      return;
+    }
 
     setActionLoading(true);
     setFeedback(null);
 
     try {
       const res = await apiClient.post(`/societies/${societyId}/buildings`, {
-        name: newBuildingName.trim(),
+        name: cleanName,
       });
       const created = res.data?.data || res.data;
       setFeedback({ type: 'success', message: `Building "${created.name}" created successfully!` });
@@ -203,6 +271,142 @@ export default function AdminUnitsPage() {
         setFeedback({ type: 'error', message: err.message });
       } else {
         setFeedback({ type: 'error', message: 'Failed to create building.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Add Floor to Existing Building
+  const handleCreateFloor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!societyId || !selectedBuilding) return;
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      const floorRes = await apiClient.post(
+        `/societies/${societyId}/buildings/${selectedBuilding.id}/floors`,
+        {
+          floor_number: Number(newFloorNumber),
+          floor_name: newFloorName.trim() || `Floor ${newFloorNumber}`,
+        }
+      );
+      const createdFloor = floorRes.data?.data || floorRes.data;
+
+      // Auto-generate units for this new floor if specified
+      if (newFloorUnitsCount > 0 && createdFloor?.id) {
+        for (let idx = 1; idx <= newFloorUnitsCount; idx++) {
+          const unitNumber = `${newFloorNumber}${String(idx).padStart(2, '0')}`;
+          await apiClient.post(
+            `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${createdFloor.id}/units`,
+            {
+              unit_number: unitNumber,
+              unit_type: 'flat',
+              status: 'vacant',
+            }
+          );
+        }
+      }
+
+      setFeedback({
+        type: 'success',
+        message: `Floor ${newFloorNumber} (${newFloorName}) with ${newFloorUnitsCount} flats created successfully!`,
+      });
+      setShowAddFloorModal(false);
+      await refreshFloorsAndUnits();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to create floor.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Add Single Flat / Unit to Floor
+  const handleCreateUnit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!societyId || !selectedBuilding || !targetFloorForUnit || !newUnitNumber.trim()) return;
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      await apiClient.post(
+        `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${targetFloorForUnit.id}/units`,
+        {
+          unit_number: newUnitNumber.trim(),
+          unit_type: newUnitType,
+          status: newUnitStatus,
+        }
+      );
+
+      setFeedback({
+        type: 'success',
+        message: `Flat ${newUnitNumber.trim()} added successfully to ${targetFloorForUnit.floor_name || `Floor ${targetFloorForUnit.floor_number}`}!`,
+      });
+      setTargetFloorForUnit(null);
+      setNewUnitNumber('');
+      await refreshFloorsAndUnits();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to add flat.' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Quick Populate Empty Wing
+  const handleQuickPopulateWing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!societyId || !selectedBuilding) return;
+
+    setActionLoading(true);
+    setFeedback(null);
+
+    try {
+      for (let f = 0; f <= quickFloors; f++) {
+        const floorName = f === 0 ? 'Ground Floor' : `Floor ${f}`;
+        const floorRes = await apiClient.post(
+          `/societies/${societyId}/buildings/${selectedBuilding.id}/floors`,
+          {
+            floor_number: f,
+            floor_name: floorName,
+          }
+        );
+        const createdFloor = floorRes.data?.data || floorRes.data;
+
+        for (let u = 1; u <= quickUnitsPerFloor; u++) {
+          const unitNumber = `${f}${String(u).padStart(2, '0')}`;
+          await apiClient.post(
+            `/societies/${societyId}/buildings/${selectedBuilding.id}/floors/${createdFloor.id}/units`,
+            {
+              unit_number: unitNumber,
+              unit_type: 'flat',
+              status: 'vacant',
+            }
+          );
+        }
+      }
+
+      setFeedback({
+        type: 'success',
+        message: `Successfully populated ${selectedBuilding.name} with ${quickFloors + 1} floors and ${(quickFloors + 1) * quickUnitsPerFloor} flats!`,
+      });
+      setShowQuickPopulateModal(false);
+      await refreshFloorsAndUnits();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setFeedback({ type: 'error', message: err.message });
+      } else {
+        setFeedback({ type: 'error', message: 'Failed to populate wing.' });
       }
     } finally {
       setActionLoading(false);
@@ -224,6 +428,22 @@ export default function AdminUnitsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {selectedBuilding && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setNewFloorNumber(floors.length);
+                setNewFloorName(`Floor ${floors.length}`);
+                setShowAddFloorModal(true);
+              }}
+              className="flex items-center gap-1.5 h-8 text-xs font-medium"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Add Floor</span>
+            </Button>
+          )}
+
           <Button
             size="sm"
             onClick={() => setShowBulkModal(true)}
@@ -272,7 +492,7 @@ export default function AdminUnitsPage() {
               <span>Bulk Society Structure Provisioning</span>
             </CardTitle>
             <CardDescription className="text-xs text-zinc-600 dark:text-zinc-400">
-              Instantly generate an entire building tower with numbered floors and individual flat units in one transaction.
+              Instantly generate an entire building tower with customizable floors and flat unit counts.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -309,7 +529,7 @@ export default function AdminUnitsPage() {
 
               <div className="space-y-1">
                 <Label htmlFor="bulkUnits" className="text-xs font-medium">
-                  Units Per Floor (1-20)
+                  Default Units / Floor
                 </Label>
                 <Input
                   id="bulkUnits"
@@ -321,6 +541,74 @@ export default function AdminUnitsPage() {
                   required
                   className="h-9 text-sm bg-white dark:bg-zinc-900"
                 />
+              </div>
+
+              {/* Expandable Custom Floors Section */}
+              <div className="sm:col-span-4 border-t border-indigo-200 dark:border-indigo-800 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowFloorCustomizer(!showFloorCustomizer)}
+                  className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5 hover:underline"
+                >
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>
+                    {showFloorCustomizer ? 'Hide custom floor overrides' : 'Customize individual floor counts (Ground, Penthouse, etc.)'}
+                  </span>
+                </button>
+
+                {showFloorCustomizer && (
+                  <div className="mt-3 p-3 bg-white dark:bg-zinc-900 rounded-lg border border-indigo-100 dark:border-indigo-900/50 space-y-2 max-h-60 overflow-y-auto">
+                    <p className="text-[11px] text-zinc-500 mb-2">
+                      Adjust unit counts or names for specific floors (e.g. fewer units on Ground or Penthouse floors).
+                    </p>
+                    <div className="grid grid-cols-12 gap-2 text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 px-1">
+                      <span className="col-span-2">Floor #</span>
+                      <span className="col-span-4">Floor Name</span>
+                      <span className="col-span-3">Units Count</span>
+                      <span className="col-span-3">Unit Prefix</span>
+                    </div>
+
+                    {customFloorList.map((cf, idx) => (
+                      <div key={cf.floor_number} className="grid grid-cols-12 gap-2 items-center">
+                        <span className="col-span-2 text-xs font-bold text-zinc-700 dark:text-zinc-300">
+                          {cf.floor_number === 0 ? 'G (0)' : `F-${cf.floor_number}`}
+                        </span>
+                        <Input
+                          value={cf.floor_name}
+                          onChange={(e) => {
+                            const updated = [...customFloorList];
+                            updated[idx].floor_name = e.target.value;
+                            setCustomFloorList(updated);
+                          }}
+                          className="col-span-4 h-7 text-xs"
+                          placeholder="e.g. Ground"
+                        />
+                        <Input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={cf.units_count}
+                          onChange={(e) => {
+                            const updated = [...customFloorList];
+                            updated[idx].units_count = parseInt(e.target.value) || 0;
+                            setCustomFloorList(updated);
+                          }}
+                          className="col-span-3 h-7 text-xs"
+                        />
+                        <Input
+                          value={cf.unit_prefix}
+                          onChange={(e) => {
+                            const updated = [...customFloorList];
+                            updated[idx].unit_prefix = e.target.value;
+                            setCustomFloorList(updated);
+                          }}
+                          placeholder="e.g. G or PH"
+                          className="col-span-3 h-7 text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="sm:col-span-4 flex items-center justify-end gap-2 pt-2">
@@ -340,7 +628,13 @@ export default function AdminUnitsPage() {
                   className="bg-indigo-600 hover:bg-indigo-700 text-white h-8 text-xs flex items-center gap-1.5"
                 >
                   {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  <span>Generate {bulkNumFloors * bulkUnitsPerFloor} Flats Now</span>
+                  <span>
+                    Generate{' '}
+                    {showFloorCustomizer
+                      ? customFloorList.reduce((acc, curr) => acc + (Number(curr.units_count) || 0), 0)
+                      : (bulkNumFloors + 1) * bulkUnitsPerFloor}{' '}
+                    Flats Now
+                  </span>
                 </Button>
               </div>
             </form>
@@ -375,6 +669,205 @@ export default function AdminUnitsPage() {
               >
                 Cancel
               </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Add Floor to Selected Building Modal */}
+      {showAddFloorModal && selectedBuilding && (
+        <Card className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <Layers className="h-4 w-4 text-indigo-600" />
+              <span>Add New Floor to {selectedBuilding.name}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreateFloor} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Floor Number</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={150}
+                  value={newFloorNumber}
+                  onChange={(e) => {
+                    const num = parseInt(e.target.value) || 0;
+                    setNewFloorNumber(num);
+                    setNewFloorName(num === 0 ? 'Ground Floor' : `Floor ${num}`);
+                  }}
+                  required
+                  className="h-8 text-xs bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Floor Name / Label</Label>
+                <Input
+                  value={newFloorName}
+                  onChange={(e) => setNewFloorName(e.target.value)}
+                  placeholder="e.g. Penthouse or Ground"
+                  required
+                  className="h-8 text-xs bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Auto-Generate Flats</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={newFloorUnitsCount}
+                  onChange={(e) => setNewFloorUnitsCount(parseInt(e.target.value) || 0)}
+                  placeholder="e.g. 4"
+                  className="h-8 text-xs bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="sm:col-span-3 flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddFloorModal(false)}
+                  className="h-8 text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={actionLoading} className="h-8 text-xs">
+                  {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Create Floor'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Add Single Flat Modal */}
+      {targetFloorForUnit && selectedBuilding && (
+        <Card className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <DoorOpen className="h-4 w-4 text-emerald-600" />
+              <span>
+                Add Flat to {targetFloorForUnit.floor_name || `Floor ${targetFloorForUnit.floor_number}`} ({selectedBuilding.name})
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreateUnit} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Flat / Unit Number</Label>
+                <Input
+                  value={newUnitNumber}
+                  onChange={(e) => setNewUnitNumber(e.target.value)}
+                  placeholder="e.g. 101, 102A, PH-1"
+                  required
+                  className="h-8 text-xs bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Unit Type</Label>
+                <select
+                  value={newUnitType}
+                  onChange={(e) => setNewUnitType(e.target.value)}
+                  className="w-full h-8 text-xs border rounded-md px-2 bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800"
+                >
+                  <option value="flat">Flat / Apartment</option>
+                  <option value="penthouse">Penthouse</option>
+                  <option value="villa">Villa</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Occupancy Status</Label>
+                <select
+                  value={newUnitStatus}
+                  onChange={(e) => setNewUnitStatus(e.target.value)}
+                  className="w-full h-8 text-xs border rounded-md px-2 bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800"
+                >
+                  <option value="vacant">Vacant</option>
+                  <option value="occupied">Occupied</option>
+                  <option value="maintenance">Under Maintenance</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-3 flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTargetFloorForUnit(null)}
+                  className="h-8 text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={actionLoading} className="h-8 text-xs">
+                  {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Flat'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Populate Wing Modal */}
+      {showQuickPopulateModal && selectedBuilding && (
+        <Card className="border border-indigo-300 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-indigo-600" />
+              <span>Quick-Populate Floors & Flats for &quot;{selectedBuilding.name}&quot;</span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Generate floors and flats directly into this wing without creating another wing.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleQuickPopulateWing} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Total Floors (1-50)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={quickFloors}
+                  onChange={(e) => setQuickFloors(parseInt(e.target.value) || 1)}
+                  required
+                  className="h-8 text-xs bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Units Per Floor (1-20)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={quickUnitsPerFloor}
+                  onChange={(e) => setQuickUnitsPerFloor(parseInt(e.target.value) || 1)}
+                  required
+                  className="h-8 text-xs bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowQuickPopulateModal(false)}
+                  className="h-8 text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={actionLoading} className="h-8 text-xs bg-indigo-600 text-white">
+                  {actionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : `Generate ${(quickFloors + 1) * quickUnitsPerFloor} Flats`}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -429,14 +922,37 @@ export default function AdminUnitsPage() {
               <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
             </div>
           ) : floors.length === 0 ? (
-            <div className="text-center py-12 border border-dashed rounded-xl border-zinc-200 dark:border-zinc-800">
+            <div className="text-center py-12 border border-dashed rounded-xl border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30">
               <Layers className="h-8 w-8 text-zinc-400 mx-auto mb-2" />
-              <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+              <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
                 No floors found in {selectedBuilding?.name}
               </p>
-              <p className="text-xs text-zinc-500 mt-1">
-                Use the bulk generator or floor creation API to set up flats in this wing.
+              <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto mb-4">
+                You can populate standard floors and flats into this wing in 1 click, or add floors one by one.
               </p>
+              <div className="flex justify-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => setShowQuickPopulateModal(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-8 flex items-center gap-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>Populate Flats in this Wing</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setNewFloorNumber(0);
+                    setNewFloorName('Ground Floor');
+                    setShowAddFloorModal(true);
+                  }}
+                  className="text-xs h-8"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  <span>Add First Floor</span>
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -454,10 +970,37 @@ export default function AdminUnitsPage() {
                           {units.length} Unit{units.length === 1 ? '' : 's'}
                         </Badge>
                       </div>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setTargetFloorForUnit(floor);
+                          setNewUnitNumber(`${floor.floor_number}${String(units.length + 1).padStart(2, '0')}`);
+                        }}
+                        className="h-7 text-xs px-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950 flex items-center gap-1"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>Add Flat</span>
+                      </Button>
                     </CardHeader>
                     <CardContent className="p-4">
                       {units.length === 0 ? (
-                        <p className="text-xs text-zinc-400 italic">No units registered on this floor.</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-zinc-400 italic">No units registered on this floor.</p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setTargetFloorForUnit(floor);
+                              setNewUnitNumber(`${floor.floor_number}01`);
+                            }}
+                            className="h-7 text-[11px]"
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            <span>Add Flat</span>
+                          </Button>
+                        </div>
                       ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
                           {units.map((unit) => {
