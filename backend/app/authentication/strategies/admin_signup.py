@@ -46,7 +46,7 @@ class AdminSignupStrategy(SignupStrategy[AdminSignupRequest]):
             provider="email",
             identifier=payload.email,
             password_hash=hashed_password,
-            role="admin",
+            role="platform_admin",
         )
 
         return user
