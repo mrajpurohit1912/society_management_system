@@ -141,6 +141,16 @@ function JoinSocietyContent() {
       return;
     }
 
+    if (buildings.length === 0) {
+      setError('This society is still in setup mode and has not configured flats yet.');
+      return;
+    }
+
+    if (!selectedUnitId) {
+      setError('Please select your wing and flat number to continue.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -355,11 +365,14 @@ function JoinSocietyContent() {
                         </div>
                       </div>
                     ) : (
-                      <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 flex items-center gap-2">
-                        <Home className="h-4 w-4 shrink-0 text-zinc-400" />
-                        <span>
-                          The society admin has not configured specific wings or flats yet. You can submit a general membership request.
-                        </span>
+                      <div className="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5">
+                        <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <p className="font-semibold">Society Setup in Progress</p>
+                          <p className="text-zinc-600 dark:text-zinc-400">
+                            The society administration has not finished configuring wings, floors, and flats yet. Resident onboarding will open as soon as flat details are configured.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -398,11 +411,15 @@ function JoinSocietyContent() {
 
                 <Button
                   type="submit"
-                  disabled={!selectedSocietyId || submitting}
+                  disabled={!selectedSocietyId || buildings.length === 0 || !selectedUnitId || submitting}
                   className="w-full h-10 mt-2"
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  {submitting ? 'Submitting Request...' : 'Submit Join Request'}
+                  {buildings.length === 0 && selectedSocietyId
+                    ? 'Society Setup Pending (Registration Closed)'
+                    : submitting
+                    ? 'Submitting Request...'
+                    : 'Submit Join Request'}
                 </Button>
               </form>
             </CardContent>

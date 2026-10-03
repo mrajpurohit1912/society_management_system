@@ -35,11 +35,25 @@ class MembershipService:
         if not society:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Society not found")
 
-        # Verify unit if provided via repository
-        if unit_id:
-            unit = await self.repo.get_unit(unit_id)
-            if not unit:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
+        # Verify society has configured units
+        units_count = await self.repo.count_units_in_society(society_id)
+        if units_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This society is currently in setup mode and has not configured flats yet. Please check back after setup is complete.",
+            )
+
+        # Resident / Tenant membership MUST be assigned to a specific unit
+        if not unit_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please select your wing and flat number to request membership.",
+            )
+
+        # Verify unit via repository
+        unit = await self.repo.get_unit(unit_id)
+        if not unit:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
 
         # Check existing membership via repository
         existing = await self.repo.get_membership(society_id, user_id)
@@ -92,6 +106,12 @@ class MembershipService:
         membership = await self.repo.get_membership_by_id(membership_id)
         if not membership:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership request not found")
+
+        if not membership.unit_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot approve resident membership without an assigned flat. Please configure society wings and designate a flat first.",
+            )
 
         await self.repo.update_membership(
             membership,

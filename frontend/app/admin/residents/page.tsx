@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ export default function AdminResidentsPage() {
   const societyId = user?.active_society_id;
 
   const [requests, setRequests] = useState<PendingRequest[]>([]);
+  const [hasInventory, setHasInventory] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -51,9 +53,20 @@ export default function AdminResidentsPage() {
     }
 
     try {
-      const response = await apiClient.get(`/societies/${societyId}/membership/requests`);
-      const list = response.data?.data || response.data || [];
-      setRequests(Array.isArray(list) ? list : []);
+      const [reqRes, bRes] = await Promise.allSettled([
+        apiClient.get(`/societies/${societyId}/membership/requests`),
+        apiClient.get(`/societies/${societyId}/buildings`),
+      ]);
+
+      if (reqRes.status === 'fulfilled') {
+        const list = reqRes.value.data?.data || reqRes.value.data || [];
+        setRequests(Array.isArray(list) ? list : []);
+      }
+
+      if (bRes.status === 'fulfilled') {
+        const bList = bRes.value.data?.data || bRes.value.data || [];
+        setHasInventory(Array.isArray(bList) && bList.length > 0);
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setFeedback({ type: 'error', message: err.message });
@@ -137,6 +150,27 @@ export default function AdminResidentsPage() {
             <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
           )}
           <span>{feedback.message}</span>
+        </div>
+      )}
+
+      {hasInventory === false && (
+        <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-sm text-amber-900 dark:text-amber-200">
+                Setup Required: Configure Wings & Flats
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                Your society currently has no wings or flats configured. Before approving resident applications, please create your buildings and flats in Units Management.
+              </p>
+            </div>
+          </div>
+          <Link href="/admin/units">
+            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs shrink-0">
+              Configure Flats &rarr;
+            </Button>
+          </Link>
         </div>
       )}
 
@@ -232,9 +266,10 @@ export default function AdminResidentsPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <Button
                         size="sm"
-                        disabled={isProcessing}
+                        disabled={isProcessing || !req.unit_id || hasInventory === false}
+                        title={!req.unit_id ? 'Cannot approve resident without an assigned flat' : undefined}
                         onClick={() => handleApprove(req.membership_id)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs flex items-center gap-1.5 font-semibold"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs flex items-center gap-1.5 font-semibold disabled:opacity-50"
                       >
                         {isProcessing ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />

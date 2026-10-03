@@ -6,6 +6,7 @@ from app.core.providers.email.base import AbstractEmailProvider
 from app.core.providers.email.adapters.resend import ResendEmailProvider
 from app.core.providers.email.adapters.console import ConsoleEmailProvider
 from app.core.providers.email.adapters.sendgrid import SendGridEmailProvider
+from app.core.providers.email.adapters.smtp import SmtpEmailProvider
 
 logger = structlog.get_logger(__name__)
 
@@ -14,6 +15,7 @@ class EmailProviderFactory:
     Factory & Registry for resolving Email Strategy Adapters dynamically at runtime based on environment config.
     """
     _providers: Dict[str, Type[AbstractEmailProvider]] = {
+        "smtp": SmtpEmailProvider,
         "resend": ResendEmailProvider,
         "console": ConsoleEmailProvider,
         "sendgrid": SendGridEmailProvider,
@@ -28,7 +30,17 @@ class EmailProviderFactory:
             logger.warning("email_factory.unknown_provider", target=target, fallback="console")
             return ConsoleEmailProvider(base_url=settings.APP_BASE_URL)
 
-        if target == "resend":
+        if target == "smtp":
+            return SmtpEmailProvider(
+                host=settings.SMTP_HOST,
+                port=settings.SMTP_PORT,
+                user=settings.SMTP_USER,
+                password=settings.SMTP_PASSWORD,
+                use_tls=settings.SMTP_USE_TLS,
+                from_email=settings.EMAIL_FROM or settings.SMTP_USER,
+                base_url=settings.APP_BASE_URL,
+            )
+        elif target == "resend":
             return ResendEmailProvider(
                 api_key=settings.RESEND_API_KEY,
                 from_email=settings.EMAIL_FROM,

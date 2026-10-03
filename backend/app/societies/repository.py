@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -166,6 +166,21 @@ class SocietyRepository:
             query = query.where(BuildingModel.id == building_id)
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def count_units_in_society(self, society_id: uuid.UUID) -> int:
+        query = (
+            select(func.count(UnitModel.id))
+            .join(FloorModel, UnitModel.floor_id == FloorModel.id)
+            .join(BuildingModel, FloorModel.building_id == BuildingModel.id)
+            .where(BuildingModel.society_id == society_id)
+        )
+        result = await self.db.execute(query)
+        return result.scalar() or 0
+
+    async def count_buildings_in_society(self, society_id: uuid.UUID) -> int:
+        query = select(func.count(BuildingModel.id)).where(BuildingModel.society_id == society_id)
+        result = await self.db.execute(query)
+        return result.scalar() or 0
 
     # --- Resident Operations ---
     async def assign_resident(self, unit_id: uuid.UUID, data) -> UnitResidentModel:
