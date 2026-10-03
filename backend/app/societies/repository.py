@@ -14,6 +14,7 @@ from app.societies.models import (
     VehicleModel,
     UserSocietyRoleModel,
     SocietyRole,
+    SocietyStatus,
     MembershipStatus,
     SubscriptionModel,
 )
