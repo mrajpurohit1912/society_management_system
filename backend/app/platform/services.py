@@ -234,6 +234,7 @@ class PlatformAdminService:
             zipcode=zipcode,
             email=lead.email,
             phone=lead.mobile,
+            status="pending_setup",
         )
         society = await self.create_new_society(soc_req)
 

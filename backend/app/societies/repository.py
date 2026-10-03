@@ -28,6 +28,7 @@ class SocietyRepository:
 
     # --- Society Operations ---
     async def create_society(self, data) -> SocietyModel:
+        status_val = getattr(data, "status", None) or SocietyStatus.ACTIVE.value
         society = SocietyModel(
             name=data.name,
             registration_no=data.registration_no,
@@ -37,7 +38,8 @@ class SocietyRepository:
             country=data.country,
             zipcode=data.zipcode,
             email=data.email,
-            phone=data.phone
+            phone=data.phone,
+            status=status_val,
         )
         self.db.add(society)
         await self.db.flush()

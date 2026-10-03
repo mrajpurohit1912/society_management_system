@@ -11,6 +11,7 @@ from app.societies.models import (
     UnitResidentModel,
     MembershipStatus,
     SocietyRole,
+    SocietyStatus,
 )
 from app.societies import services as services_pkg
 
@@ -34,6 +35,13 @@ class MembershipService:
         society = await self.repo.get_society(society_id)
         if not society:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Society not found")
+
+        # Verify society is not in setup mode
+        if society.status == SocietyStatus.PENDING_SETUP.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This society is currently in setup mode and is not yet accepting resident registrations. Please check back after setup is complete.",
+            )
 
         # Verify unit if provided via repository
         if unit_id:
@@ -92,6 +100,13 @@ class MembershipService:
         membership = await self.repo.get_membership_by_id(membership_id)
         if not membership:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership request not found")
+
+        society = await self.repo.get_society(membership.society_id)
+        if society and society.status == SocietyStatus.PENDING_SETUP.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot approve resident membership while society is in setup mode. Please configure society wings and flats first.",
+            )
 
         await self.repo.update_membership(
             membership,

@@ -27,6 +27,7 @@ class PlatformCreateSocietyRequest(BaseModel):
     zipcode: str = Field(..., json_schema_extra={"example": "400050"})
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    status: Optional[str] = "active"
 
 class PlatformCreateSocietyFromLeadRequest(BaseModel):
     plan: Optional[str] = Field(default="GOLD", json_schema_extra={"example": "GOLD"})

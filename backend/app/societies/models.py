@@ -9,6 +9,7 @@ from app.core.database import Base
 
 class SocietyStatus(str, enum.Enum):
     ACTIVE = "active"
+    PENDING_SETUP = "pending_setup"
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
 

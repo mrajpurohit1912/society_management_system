@@ -2,7 +2,7 @@ import uuid
 from typing import List
 from fastapi import HTTPException, status
 
-from app.societies.models import BuildingModel
+from app.societies.models import BuildingModel, SocietyStatus
 from app.societies.schemas import BuildingCreate, BuildingUpdate
 from app.societies.services.base import BaseSocietyService
 
@@ -24,7 +24,12 @@ class BuildingService(BaseSocietyService):
                 detail=f"Building with name '{data.name}' already exists in the society.",
             )
         
-        return await self.repo.create_building(society_id, data)
+        building = await self.repo.create_building(society_id, data)
+        if society.status == SocietyStatus.PENDING_SETUP.value:
+            society.status = SocietyStatus.ACTIVE.value
+            await self.db.flush()
+
+        return building
 
     async def get_building(self, building_id: uuid.UUID) -> BuildingModel:
         building = await self.repo.get_building(building_id)

@@ -3,7 +3,7 @@ from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
-from app.societies.models import BuildingModel, FloorModel, UnitModel
+from app.societies.models import BuildingModel, FloorModel, UnitModel, SocietyStatus
 from app.societies.schemas import BulkProvisionRequest, BuildingPopulateRequest
 from app.societies import services as services_pkg
 
@@ -94,6 +94,9 @@ class BulkProvisionService:
 
             buildings_created.append(building)
 
+        if society.status == SocietyStatus.PENDING_SETUP.value:
+            society.status = SocietyStatus.ACTIVE.value
+
         await self.db.flush()
         return buildings_created
 
@@ -137,6 +140,10 @@ class BulkProvisionService:
                     unit_number=unit_number,
                 )
                 self.db.add(unit)
+
+        society = await self.repo.get_society(society_id)
+        if society and society.status == SocietyStatus.PENDING_SETUP.value:
+            society.status = SocietyStatus.ACTIVE.value
 
         await self.db.flush()
         return building

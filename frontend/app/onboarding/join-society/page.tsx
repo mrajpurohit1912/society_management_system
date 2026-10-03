@@ -18,6 +18,7 @@ interface SocietyItem {
   city: string;
   state: string;
   address: string;
+  status?: string;
 }
 
 interface BuildingItem {
@@ -141,8 +142,9 @@ function JoinSocietyContent() {
       return;
     }
 
-    if (buildings.length === 0) {
-      setError('This society is still in setup mode and has not configured flats yet.');
+    const selectedSoc = societies.find((s) => s.id === selectedSocietyId);
+    if (selectedSoc?.status === 'pending_setup' || buildings.length === 0) {
+      setError('This society is still in setup mode and has not opened resident registrations yet.');
       return;
     }
 
@@ -290,9 +292,16 @@ function JoinSocietyContent() {
                             }`}
                           >
                             <div className="space-y-0.5">
-                              <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">
-                                {s.name}
-                              </p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">
+                                  {s.name}
+                                </p>
+                                {s.status === 'pending_setup' && (
+                                  <span className="text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
+                                    Setup in Progress
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-1 text-xs text-zinc-500">
                                 <MapPin className="h-3 w-3 shrink-0" />
                                 <span>{s.city}, {s.state}</span>
@@ -409,18 +418,25 @@ function JoinSocietyContent() {
                   </div>
                 </div>
 
-                <Button
-                  type="submit"
-                  disabled={!selectedSocietyId || buildings.length === 0 || !selectedUnitId || submitting}
-                  className="w-full h-10 mt-2"
-                >
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  {buildings.length === 0 && selectedSocietyId
-                    ? 'Society Setup Pending (Registration Closed)'
-                    : submitting
-                    ? 'Submitting Request...'
-                    : 'Submit Join Request'}
-                </Button>
+                {(() => {
+                  const selectedSoc = societies.find((s) => s.id === selectedSocietyId);
+                  const isSetupPending = selectedSoc?.status === 'pending_setup' || buildings.length === 0;
+
+                  return (
+                    <Button
+                      type="submit"
+                      disabled={!selectedSocietyId || isSetupPending || !selectedUnitId || submitting}
+                      className="w-full h-10 mt-2"
+                    >
+                      {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      {isSetupPending && selectedSocietyId
+                        ? 'Society Setup Pending (Registration Closed)'
+                        : submitting
+                        ? 'Submitting Request...'
+                        : 'Submit Join Request'}
+                    </Button>
+                  );
+                })()}
               </form>
             </CardContent>
           </Card>
