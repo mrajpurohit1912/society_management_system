@@ -50,25 +50,52 @@ class SmtpEmailProvider(AbstractEmailProvider):
         html_part = MIMEText(html_content, "html", "utf-8")
         msg.attach(html_part)
 
+        def _send_via_ssl(port: int = 465) -> None:
+            with smtplib.SMTP_SSL(self.host, port, timeout=20) as server:
+                server.ehlo()
+                server.login(self.user, self.password)
+                server.send_message(msg)
+
+        def _send_via_starttls(port: int = 587) -> None:
+            with smtplib.SMTP(self.host, port, timeout=20) as server:
+                server.ehlo()
+                if self.use_tls:
+                    server.starttls()
+                    server.ehlo()
+                server.login(self.user, self.password)
+                server.send_message(msg)
+
         try:
             if self.port == 465:
-                # SSL Direct Connection
-                with smtplib.SMTP_SSL(self.host, self.port, timeout=15) as server:
-                    server.login(self.user, self.password)
-                    server.send_message(msg)
+                _send_via_ssl(self.port)
             else:
-                # STARTTLS Connection (e.g. Gmail Port 587)
-                with smtplib.SMTP(self.host, self.port, timeout=15) as server:
-                    if self.use_tls:
-                        server.starttls()
-                    server.login(self.user, self.password)
-                    server.send_message(msg)
+                _send_via_starttls(self.port)
 
             logger.info("smtp_adapter.success", to=to_email, subject=subject)
             return True
-        except Exception as e:
-            logger.exception("smtp_adapter.failed", to=to_email, subject=subject, error=str(e))
-            return False
+        except Exception as primary_err:
+            logger.warning(
+                "smtp_adapter.primary_failed",
+                port=self.port,
+                error=str(primary_err),
+                trying_fallback=True,
+            )
+            try:
+                if self.port == 465:
+                    _send_via_starttls(587)
+                else:
+                    _send_via_ssl(465)
+                logger.info("smtp_adapter.fallback_success", to=to_email, subject=subject)
+                return True
+            except Exception as fallback_err:
+                logger.exception(
+                    "smtp_adapter.failed",
+                    to=to_email,
+                    subject=subject,
+                    primary_error=str(primary_err),
+                    fallback_error=str(fallback_err),
+                )
+                return False
 
     def send_resident_verification_email(self, to_email: str, name: str, token: str) -> bool:
         verification_link = f"{self.base_url}/verify-email?token={token}"

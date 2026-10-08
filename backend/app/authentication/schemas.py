@@ -89,3 +89,8 @@ class MobileOTPSigninRequest(BaseModel):
 
 class GoogleSigninRequest(BaseModel):
     google_id_token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+

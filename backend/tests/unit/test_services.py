@@ -189,13 +189,44 @@ async def test_resident_signup_success(mock_user_repo_cls, mock_email):
         password="securepassword123"
     )
 
-    result = await AuthFlowService.resident_signup(mock_db, payload)
-    assert result == mock_user
+    mock_email.return_value = True
+    user, email_sent = await AuthFlowService.resident_signup(mock_db, payload)
+    assert user == mock_user
+    assert email_sent is True
     mock_repo.get_credential_by_identifier.assert_called_once_with("email", "jane@example.com")
     mock_repo.create_user.assert_called_once()
     mock_repo.add_credential.assert_called_once()
     mock_repo.create_activation_token.assert_called_once()
     mock_email.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("app.core.email_service.EmailService.send_resident_verification_email")
+@patch("app.authentication.services.UserRepository")
+async def test_resident_signup_email_failure_marks_pending(mock_user_repo_cls, mock_email):
+    from app.authentication.models import UserAccountStatus
+    mock_db = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_repo.get_credential_by_identifier.return_value = None
+    mock_user = MagicMock(user_id=uuid.uuid4(), email_verified=False)
+    mock_repo.create_user.return_value = mock_user
+    mock_user_repo_cls.return_value = mock_repo
+    mock_email.return_value = False
+
+    payload = ResidentSignupRequest(
+        first_name="Jane",
+        last_name="Doe",
+        email="jane@example.com",
+        password="securepassword123"
+    )
+
+    user, email_sent = await AuthFlowService.resident_signup(mock_db, payload)
+    assert email_sent is False
+    mock_repo.update_user.assert_called_once_with(
+        user=mock_user,
+        status=UserAccountStatus.ACTIVATION_PENDING.value,
+    )
+
 
 
 @pytest.mark.asyncio
@@ -259,4 +290,49 @@ async def test_activate_admin_success(mock_user_repo_cls):
     mock_repo.update_credential_password.assert_called_once()
     mock_repo.update_user.assert_called_once_with(mock_user, status="active")
     mock_repo.mark_token_used.assert_called_once_with(mock_token)
+
+
+@pytest.mark.asyncio
+@patch("app.core.email_service.EmailService.send_resident_verification_email")
+@patch("app.authentication.services.UserRepository")
+async def test_resend_verification_email_success(mock_user_repo_cls, mock_email):
+    from app.authentication.models import UserAccountStatus
+    mock_db = AsyncMock()
+    mock_repo = AsyncMock()
+    u_id = uuid.uuid4()
+    mock_cred = MagicMock(user_id=u_id)
+    mock_repo.get_credential_by_identifier.return_value = mock_cred
+    mock_user = MagicMock(user_id=u_id, email_verified=False, first_name="Jane", last_name="Doe")
+    mock_repo.get_user_by_id.return_value = mock_user
+    mock_user_repo_cls.return_value = mock_repo
+    mock_email.return_value = True
+
+    result = await AuthFlowService.resend_verification_email(mock_db, "jane@example.com")
+    assert result is True
+    mock_repo.create_activation_token.assert_called_once()
+    mock_email.assert_called_once()
+    mock_repo.update_user.assert_called_once_with(mock_user, status=UserAccountStatus.REGISTERED.value)
+
+
+@pytest.mark.asyncio
+@patch("app.core.email_service.EmailService.send_resident_verification_email")
+@patch("app.authentication.services.UserRepository")
+async def test_resend_verification_email_failure_marks_pending(mock_user_repo_cls, mock_email):
+    from app.authentication.models import UserAccountStatus
+    mock_db = AsyncMock()
+    mock_repo = AsyncMock()
+    u_id = uuid.uuid4()
+    mock_cred = MagicMock(user_id=u_id)
+    mock_repo.get_credential_by_identifier.return_value = mock_cred
+    mock_user = MagicMock(user_id=u_id, email_verified=False, first_name="Jane", last_name="Doe")
+    mock_repo.get_user_by_id.return_value = mock_user
+    mock_user_repo_cls.return_value = mock_repo
+    mock_email.return_value = False
+
+    result = await AuthFlowService.resend_verification_email(mock_db, "jane@example.com")
+    assert result is False
+    mock_repo.create_activation_token.assert_called_once()
+    mock_email.assert_called_once()
+    mock_repo.update_user.assert_called_once_with(mock_user, status=UserAccountStatus.ACTIVATION_PENDING.value)
+
 

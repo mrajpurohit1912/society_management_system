@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import Dict, Type, Optional
+from typing import Dict, Type, Optional, Tuple
 import structlog
 
 from app.authentication.models import (
@@ -61,7 +61,7 @@ def _ensure_timezone(dt: datetime) -> datetime:
 class AuthFlowService:
 
     @classmethod
-    async def resident_signup(cls, db: AsyncSession, payload: ResidentSignupRequest) -> UserModel:
+    async def resident_signup(cls, db: AsyncSession, payload: ResidentSignupRequest) -> Tuple[UserModel, bool]:
         user_repo = UserRepository(db)
         existing_cred = await user_repo.get_credential_by_identifier("email", payload.email)
         if existing_cred:
@@ -93,14 +93,26 @@ class AuthFlowService:
             expires_at=expiry,
         )
 
-        EmailService.send_resident_verification_email(
+        email_sent = EmailService.send_resident_verification_email(
             to_email=payload.email,
             name=f"{payload.first_name} {payload.last_name}",
             token=raw_token,
         )
+        if not email_sent:
+            logger.error(
+                "auth.email_dispatch_failed",
+                user_id=str(user.user_id),
+                email=payload.email,
+                reason="SMTP or Email Provider delivery failed",
+            )
+            user = await user_repo.update_user(
+                user=user,
+                status=UserAccountStatus.ACTIVATION_PENDING.value,
+            )
+        else:
+            logger.info("auth.resident_signup_success", user_id=str(user.user_id), email=payload.email)
 
-        logger.info("auth.resident_signup_success", user_id=str(user.user_id), email=payload.email)
-        return user
+        return user, email_sent
 
     @classmethod
     async def verify_email(cls, db: AsyncSession, payload: VerifyEmailRequest) -> UserModel:
@@ -208,7 +220,46 @@ class AuthFlowService:
             },
         }
 
+    @classmethod
+    async def resend_verification_email(cls, db: AsyncSession, email: str) -> bool:
+        user_repo = UserRepository(db)
+        cred = await user_repo.get_credential_by_identifier("email", email)
+        if not cred:
+            raise ValueError("No account found with this email address")
 
+        user = await user_repo.get_user_by_id(cred.user_id)
+        if not user or user.email_verified:
+            raise ValueError("Account is already verified or does not exist")
+
+        raw_token = secrets.token_urlsafe(32)
+        expiry = datetime.now(timezone.utc) + timedelta(hours=24)
+
+        await user_repo.create_activation_token(
+            user_id=user.user_id,
+            token=raw_token,
+            token_type=TokenType.EMAIL_VERIFICATION.value,
+            expires_at=expiry,
+        )
+
+        email_sent = EmailService.send_resident_verification_email(
+            to_email=email,
+            name=f"{user.first_name} {user.last_name}",
+            token=raw_token,
+        )
+
+        if email_sent:
+            await user_repo.update_user(user, status=UserAccountStatus.REGISTERED.value)
+            logger.info("auth.resend_verification_success", user_id=str(user.user_id), email=email)
+            return True
+        else:
+            await user_repo.update_user(user, status=UserAccountStatus.ACTIVATION_PENDING.value)
+            logger.error(
+                "auth.resend_verification_failed",
+                user_id=str(user.user_id),
+                email=email,
+                reason="SMTP or Email Provider delivery failed",
+            )
+            return False        
 
 class AuthOrchestratorService:
     def __init__(self, redis_service: RedisService, google_client_id: str):

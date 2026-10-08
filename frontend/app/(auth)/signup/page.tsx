@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Building2, Loader2, AlertCircle, MailCheck } from 'lucide-react';
+import { Building2, Loader2, AlertCircle, MailCheck, AlertTriangle } from 'lucide-react';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -22,6 +22,10 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [emailSent, setEmailSent] = useState(true);
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +44,7 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      await apiClient.post('/auth/resident/signup', {
+      const response = await apiClient.post('/auth/resident/signup', {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         email: email.trim().toLowerCase(),
@@ -48,6 +52,8 @@ export default function SignupPage() {
         mobile_number: mobileNumber.trim() ? mobileNumber.trim() : undefined,
       });
 
+      const isEmailDelivered = response.data?.email_sent !== false;
+      setEmailSent(isEmailDelivered);
       setIsSuccess(true);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -57,6 +63,27 @@ export default function SignupPage() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResending(true);
+    setResendStatus(null);
+    setResendError(null);
+    try {
+      const response = await apiClient.post('/auth/resend-verification', {
+        email: email.trim().toLowerCase(),
+      });
+      setEmailSent(true);
+      setResendStatus(response.data?.message || 'Verification email resent successfully! Please check your inbox.');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setResendError(err.message);
+      } else {
+        setResendError('Failed to resend verification email. Please try again shortly.');
+      }
+    } finally {
+      setResending(false);
     }
   };
 
@@ -77,19 +104,80 @@ export default function SignupPage() {
           {isSuccess ? (
             /* Success confirmation screen */
             <CardContent className="pt-8 pb-8 text-center space-y-4">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
-                <MailCheck className="h-7 w-7" />
-              </div>
-              <CardTitle className="text-2xl font-bold">Check your email</CardTitle>
-              <CardDescription className="text-sm text-zinc-600 dark:text-zinc-400 max-w-xs mx-auto">
-                We sent a verification link to <strong className="text-zinc-900 dark:text-zinc-100">{email}</strong>. Please check your inbox and click the link to verify your email.
-              </CardDescription>
+              {emailSent ? (
+                <>
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                    <MailCheck className="h-7 w-7" />
+                  </div>
+                  <CardTitle className="text-2xl font-bold">Check your email</CardTitle>
+                  <CardDescription className="text-sm text-zinc-600 dark:text-zinc-400 max-w-xs mx-auto">
+                    We sent a verification link to <strong className="text-zinc-900 dark:text-zinc-100">{email}</strong>. Please check your inbox and click the link to verify your email.
+                  </CardDescription>
 
-              <div className="pt-4">
-                <Button onClick={() => router.push('/login')} className="w-full h-10">
-                  Proceed to Sign In
-                </Button>
-              </div>
+                  {resendStatus && (
+                    <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+                      {resendStatus}
+                    </div>
+                  )}
+
+                  <div className="pt-4 space-y-2">
+                    <Button onClick={() => router.push('/login')} className="w-full h-10">
+                      Proceed to Sign In
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleResendVerification}
+                      disabled={resending}
+                      className="w-full h-10"
+                    >
+                      {resending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      {resending ? 'Resending Link...' : "Didn't receive an email? Resend"}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="h-7 w-7" />
+                  </div>
+                  <CardTitle className="text-2xl font-bold">Email Delivery Pending</CardTitle>
+                  <CardDescription className="text-sm text-zinc-600 dark:text-zinc-400 max-w-xs mx-auto">
+                    Your account was created, but we were unable to deliver your verification email to{' '}
+                    <strong className="text-zinc-900 dark:text-zinc-100">{email}</strong>. Please click below to resend the verification link.
+                  </CardDescription>
+
+                  {resendError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2 text-left">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{resendError}</span>
+                    </div>
+                  )}
+
+                  {resendStatus && (
+                    <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+                      {resendStatus}
+                    </div>
+                  )}
+
+                  <div className="pt-4 space-y-2">
+                    <Button
+                      onClick={handleResendVerification}
+                      disabled={resending}
+                      className="w-full h-10"
+                    >
+                      {resending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      {resending ? 'Resending Link...' : 'Resend Verification Email'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => router.push('/login')}
+                      className="w-full h-10"
+                    >
+                      Proceed to Sign In
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           ) : (
             /* Signup Form */

@@ -20,6 +20,7 @@ from app.authentication.schemas import (
     EmailPasswordSigninRequest,
     MobileOTPSigninRequest,
     GoogleSigninRequest,
+    ResendVerificationRequest,
 )
 from app.authentication.services import AuthFlowService, AuthOrchestratorService, LoginOrchestratorService
 from app.authentication.security import TokenService
@@ -305,15 +306,22 @@ async def resident_signup(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Public Resident Signup: Registers identity and sends an email verification link via Resend.
+    Public Resident Signup: Registers identity and sends an email verification link.
     Does NOT assign a society membership until the user requests & gets approved.
     """
     try:
         async with db.begin():
-            user = await AuthFlowService.resident_signup(db, payload)
+            user, email_sent = await AuthFlowService.resident_signup(db, payload)
+
+        message = (
+            "Resident signup successful. A verification email has been sent to your email address."
+            if email_sent
+            else "Account created, but we could not deliver your verification email. Please request a new verification link."
+        )
         return {
             "success": True,
-            "message": "Resident signup successful. A verification email has been sent to your email address.",
+            "email_sent": email_sent,
+            "message": message,
             "data": {
                 "user_id": str(user.user_id),
                 "first_name": user.first_name,
@@ -324,6 +332,34 @@ async def resident_signup(
         }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    payload: ResendVerificationRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Resend Email Verification Link: Dispatches a new verification token for registered but unverified accounts.
+    """
+    try:
+        async with db.begin():
+            email_sent = await AuthFlowService.resend_verification_email(db, payload.email)
+
+        if not email_sent:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Email delivery service is currently unavailable. Please try again later.",
+            )
+
+        return {
+            "success": True,
+            "email_sent": True,
+            "message": "A new verification email has been sent to your email address.",
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
 
 
 @router.post("/verify-email")
