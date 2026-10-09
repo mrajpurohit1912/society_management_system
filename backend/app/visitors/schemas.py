@@ -14,7 +14,7 @@ from app.visitors.models import (
 # --- Pass DTOs ---
 
 class VisitorPassCreate(BaseModel):
-    unit_id: uuid.UUID
+    unit_id: Optional[uuid.UUID] = None
     visitor_name: str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "Aarav Sharma"})
     visitor_phone: str = Field(..., min_length=7, max_length=20, json_schema_extra={"example": "+919876543210"})
     visitor_type: str = Field(default=VisitorType.GUEST.value, json_schema_extra={"example": "guest"})

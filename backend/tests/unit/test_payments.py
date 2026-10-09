@@ -341,3 +341,141 @@ async def test_transaction_service_submit_and_review_offline():
     assert reviewed.approved_by == admin_id
     assert mock_inv.status == InvoiceStatus.PAID.value
     mock_pay_repo.create_receipt.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_invoice_routes_authorization(db_session):
+    from app.payments.routes.invoices import list_society_invoices, get_invoice_details, get_unit_dues
+    from app.societies.models import UserSocietyRoleModel
+
+    society_id = uuid.uuid4()
+    unit_id = uuid.uuid4()
+    other_unit_id = uuid.uuid4()
+
+    # Pre-create society and unit
+    society = SocietyModel(
+        id=society_id,
+        name="Invoice Route Society",
+        registration_no=f"REG/{uuid.uuid4().hex[:6]}",
+        address="Address",
+        city="City",
+        state="State",
+        country="India",
+        zipcode="123456",
+    )
+    building = BuildingModel(id=uuid.uuid4(), society_id=society_id, name="Wing A")
+    floor = FloorModel(id=uuid.uuid4(), building_id=building.id, floor_number=1)
+    unit1 = UnitModel(id=unit_id, floor_id=floor.id, unit_number="A-101")
+    unit2 = UnitModel(id=other_unit_id, floor_id=floor.id, unit_number="A-102")
+    db_session.add_all([society, building, floor, unit1, unit2])
+    await db_session.flush()
+
+    inv = MaintenanceInvoiceModel(
+        society_id=society_id,
+        unit_id=unit_id,
+        billing_period="2026-10",
+        title="Oct Maintenance",
+        amount=3500.0,
+        due_date=datetime.now(timezone.utc),
+        status="pending",
+    )
+    db_session.add(inv)
+    await db_session.flush()
+
+    platform_admin = UserModel(
+        user_id=uuid.uuid4(),
+        first_name="Super",
+        last_name="Admin",
+        role="platform_admin",
+    )
+    resident_user = UserModel(
+        user_id=uuid.uuid4(),
+        first_name="Resident",
+        last_name="User",
+        role="resident",
+    )
+    db_session.add_all([platform_admin, resident_user])
+    await db_session.flush()
+
+    # 1. Platform admin can list all
+    invoices = await list_society_invoices(
+        society_id=society_id,
+        unit_id=None,
+        status=None,
+        billing_period=None,
+        db=db_session,
+        current_user=platform_admin,
+    )
+    assert len(invoices) >= 1
+
+    # 2. Resident with no membership returns empty list
+    res_invoices = await list_society_invoices(
+        society_id=society_id,
+        unit_id=None,
+        status=None,
+        billing_period=None,
+        db=db_session,
+        current_user=resident_user,
+    )
+    assert res_invoices == []
+
+    # 3. Add approved membership for resident with unit_id
+    mem = UserSocietyRoleModel(
+        user_id=resident_user.user_id,
+        society_id=society_id,
+        role="resident",
+        unit_id=unit_id,
+        status="approved",
+    )
+    db_session.add(mem)
+    await db_session.flush()
+
+    # Resident lists invoices -> returns only their assigned flat's invoice
+    res_invoices2 = await list_society_invoices(
+        society_id=society_id,
+        unit_id=None,
+        status=None,
+        billing_period=None,
+        db=db_session,
+        current_user=resident_user,
+    )
+    assert len(res_invoices2) == 1
+    assert res_invoices2[0].unit_id == unit_id
+
+    # Resident attempts to query other unit -> 403 Forbidden
+    with pytest.raises(HTTPException) as exc:
+        await list_society_invoices(
+            society_id=society_id,
+            unit_id=other_unit_id,
+            status=None,
+            billing_period=None,
+            db=db_session,
+            current_user=resident_user,
+        )
+    assert exc.value.status_code == 403
+
+    # 4. Get invoice details
+    details = await get_invoice_details(
+        society_id=society_id,
+        invoice_id=inv.id,
+        db=db_session,
+        current_user=resident_user,
+    )
+    assert details.id == inv.id
+
+    # 5. Get unit dues
+    dues = await get_unit_dues(
+        unit_id=unit_id,
+        db=db_session,
+        current_user=resident_user,
+    )
+    assert len(dues) == 1
+
+    # Resident queries dues for other unit -> 403 Forbidden
+    with pytest.raises(HTTPException) as exc_due:
+        await get_unit_dues(
+            unit_id=other_unit_id,
+            db=db_session,
+            current_user=resident_user,
+        )
+    assert exc_due.value.status_code == 403

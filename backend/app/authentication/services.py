@@ -15,7 +15,7 @@ from app.authentication.models import (
     UserRole,
     TokenType,
 )
-from app.societies.models import UserSocietyRoleModel, SubscriptionModel, SubscriptionStatus, SocietyModel
+from app.societies.models import UserSocietyRoleModel, SubscriptionModel, SubscriptionStatus, SocietyModel, MembershipStatus
 from app.authentication.repository import UserRepository
 from app.societies.repository import SocietyRepository
 from app.authentication.schemas import (
@@ -190,17 +190,41 @@ class AuthFlowService:
         active_society_id = None
         society_role = user.role
         membership_status = "unlinked"
+        unit_id = None
+        unit_number = None
 
         if memberships:
-            active_mem = memberships[0]
+            # Prioritize approved membership if present
+            approved_mem = next(
+                (m for m in memberships if m.status == MembershipStatus.APPROVED.value),
+                None,
+            )
+            active_mem = approved_mem or memberships[0]
             active_society_id = str(active_mem.society_id)
             society_role = active_mem.role
             membership_status = active_mem.status
+
+            if active_mem.unit_id:
+                unit_id = str(active_mem.unit_id)
+                if active_mem.unit:
+                    unit_number = active_mem.unit.unit_number
+            else:
+                res_link = await society_repo.get_resident_link_by_user(user.user_id)
+                if res_link and res_link.unit_id:
+                    unit_id = str(res_link.unit_id)
+                    if res_link.unit:
+                        unit_number = res_link.unit.unit_number
 
             sub = await society_repo.get_subscription(active_mem.society_id)
             if sub and _ensure_timezone(sub.expiry_date) < datetime.now(timezone.utc):
                 sub.status = SubscriptionStatus.EXPIRED.value
                 logger.warning("auth.login_society_subscription_expired", society_id=str(active_mem.society_id))
+        else:
+            res_link = await society_repo.get_resident_link_by_user(user.user_id)
+            if res_link and res_link.unit_id:
+                unit_id = str(res_link.unit_id)
+                if res_link.unit:
+                    unit_number = res_link.unit.unit_number
 
         access_token = TokenService.create_access_token(str(user.user_id), user.role)
 
@@ -217,6 +241,8 @@ class AuthFlowService:
                 "active_society_id": active_society_id,
                 "society_role": society_role,
                 "membership_status": membership_status,
+                "unit_id": unit_id,
+                "unit_number": unit_number,
             },
         }
 

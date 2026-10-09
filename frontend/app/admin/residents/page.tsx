@@ -8,6 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   Users,
   CheckCircle,
   XCircle,
@@ -18,6 +26,7 @@ import {
   Home,
   Mail,
   Phone,
+  Eye,
 } from 'lucide-react';
 
 interface PendingRequest {
@@ -45,6 +54,7 @@ export default function AdminResidentsPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [viewingRequest, setViewingRequest] = useState<PendingRequest | null>(null);
 
   const fetchRequests = useCallback(async () => {
     if (!societyId) {
@@ -266,6 +276,15 @@ export default function AdminResidentsPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => setViewingRequest(req)}
+                        className="h-8 text-xs flex items-center gap-1.5"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        <span>View</span>
+                      </Button>
+                      <Button
+                        size="sm"
                         disabled={isProcessing || !req.unit_id || hasInventory === false}
                         title={!req.unit_id ? 'Cannot approve resident without an assigned flat' : undefined}
                         onClick={() => handleApprove(req.membership_id)}
@@ -296,6 +315,98 @@ export default function AdminResidentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* View Resident Request Dialog */}
+      {viewingRequest && (
+        <Dialog open={!!viewingRequest} onOpenChange={(open) => !open && setViewingRequest(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between text-base">
+                <span>{viewingRequest.user_name || 'Resident Applicant'}</span>
+                <Badge variant="outline" className="capitalize text-xs font-semibold">
+                  {viewingRequest.role === 'resident' ? 'Flat Owner' : viewingRequest.role}
+                </Badge>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Resident Membership & Unit Allocation Request
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-sm">
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Assigned Flat / Unit</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    {viewingRequest.unit_number
+                      ? `${viewingRequest.building_name ? `${viewingRequest.building_name} • ` : ''}Flat ${viewingRequest.unit_number}`
+                      : 'Not Selected'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Requested Date</span>
+                  <span className="text-xs text-zinc-700 dark:text-zinc-300">
+                    {viewingRequest.requested_at
+                      ? new Date(viewingRequest.requested_at).toLocaleString()
+                      : 'Recent'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Email Address</span>
+                  <span className="text-xs text-zinc-700 dark:text-zinc-300">
+                    {viewingRequest.user_email || 'Not provided'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Phone Number</span>
+                  <span className="text-xs text-zinc-700 dark:text-zinc-300">
+                    {viewingRequest.user_phone || 'Not provided'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs text-zinc-500 block">Membership Request ID</span>
+                <span className="font-mono text-[11px] text-zinc-400 break-all">{viewingRequest.membership_id}</span>
+              </div>
+            </div>
+
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setViewingRequest(null)} className="h-8 text-xs">
+                Close
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const id = viewingRequest.membership_id;
+                  setViewingRequest(null);
+                  handleReject(id);
+                }}
+                className="text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900 h-8 text-xs flex items-center gap-1.5"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                <span>Reject</span>
+              </Button>
+              <Button
+                size="sm"
+                disabled={!viewingRequest.unit_id || hasInventory === false}
+                onClick={() => {
+                  const id = viewingRequest.membership_id;
+                  setViewingRequest(null);
+                  handleApprove(id);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <CheckCircle className="h-3.5 w-3.5" />
+                <span>Approve & Assign</span>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

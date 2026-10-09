@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   PlusCircle,
   Calendar,
+  Eye,
 } from 'lucide-react';
 
 interface Notice {
@@ -230,9 +231,22 @@ export default function ResidentDashboardPage() {
                       <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
                         {n.title}
                       </h2>
-                      <Badge variant="outline" className="text-[10px] capitalize">
-                        {n.category.replace(/_/g, ' ')}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="outline" className="text-[10px] capitalize">
+                          {n.category.replace(/_/g, ' ')}
+                        </Badge>
+                        <Link
+                          href="/resident/notices"
+                          className={buttonVariants({
+                            variant: 'ghost',
+                            size: 'sm',
+                            className: 'h-6 px-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1',
+                          })}
+                        >
+                          <Eye className="h-3 w-3" />
+                          <span>View</span>
+                        </Link>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-zinc-400">
                       <Calendar className="h-3 w-3" />
@@ -284,10 +298,21 @@ export default function ResidentDashboardPage() {
                         {p.visitor_type} • Valid until {new Date(p.valid_until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-sm bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded">
                         {p.passcode}
                       </span>
+                      <Link
+                        href="/resident/visitors"
+                        className={buttonVariants({
+                          variant: 'ghost',
+                          size: 'sm',
+                          className: 'h-6 px-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1',
+                        })}
+                      >
+                        <Eye className="h-3 w-3" />
+                        <span>View</span>
+                      </Link>
                     </div>
                   </div>
                 ))}

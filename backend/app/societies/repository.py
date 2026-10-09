@@ -212,6 +212,19 @@ class SocietyRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_resident_link_by_user(self, user_id: uuid.UUID) -> Optional[UnitResidentModel]:
+        query = (
+            select(UnitResidentModel)
+            .options(
+                selectinload(UnitResidentModel.unit)
+                    .selectinload(UnitModel.floor)
+                    .selectinload(FloorModel.building)
+            )
+            .where(UnitResidentModel.user_id == user_id)
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
     async def list_residents(self, unit_id: uuid.UUID) -> List[UnitResidentModel]:
         query = select(UnitResidentModel).where(UnitResidentModel.unit_id == unit_id)
         result = await self.db.execute(query)
@@ -299,7 +312,15 @@ class SocietyRepository:
 
     async def list_user_memberships(self, user_id: uuid.UUID) -> List[UserSocietyRoleModel]:
         """List all society memberships for a specific user."""
-        query = select(UserSocietyRoleModel).where(UserSocietyRoleModel.user_id == user_id)
+        query = (
+            select(UserSocietyRoleModel)
+            .options(
+                selectinload(UserSocietyRoleModel.unit)
+                    .selectinload(UnitModel.floor)
+                    .selectinload(FloorModel.building),
+            )
+            .where(UserSocietyRoleModel.user_id == user_id)
+        )
         result = await self.db.execute(query)
         return list(result.scalars().all())
 

@@ -418,3 +418,53 @@ async def test_gatekeeper_quick_checkin(db_session, visitor_test_data):
             ),
         )
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_pass_service_auto_resolve_unit(db_session, visitor_test_data):
+    pass_service = PassService(db_session)
+    data = visitor_test_data
+
+    # Link resident to unit in membership
+    from app.societies.models import UserSocietyRoleModel
+    mem = UserSocietyRoleModel(
+        user_id=data["resident"].user_id,
+        society_id=data["society"].id,
+        role="resident",
+        unit_id=data["unit"].id,
+        status="approved",
+    )
+    db_session.add(mem)
+    await db_session.flush()
+
+    # Create pass without specifying unit_id (auto-resolved)
+    payload = VisitorPassCreate(
+        visitor_name="Guest Without Explicit Unit",
+        visitor_phone="+919988776655",
+        visitor_type="guest",
+        valid_hours=6,
+    )
+    created_pass = await pass_service.create_visitor_pass(
+        user_id=data["resident"].user_id,
+        society_id=data["society"].id,
+        data=payload,
+    )
+    assert created_pass.unit_id == data["unit"].id
+
+    # If user has no membership/link and no unit_id provided -> 400 Bad Request
+    unlinked_user = UserModel(
+        user_id=uuid.uuid4(),
+        first_name="Unlinked",
+        last_name="User",
+        role="resident",
+    )
+    db_session.add(unlinked_user)
+    await db_session.flush()
+
+    with pytest.raises(HTTPException) as exc:
+        await pass_service.create_visitor_pass(
+            user_id=unlinked_user.user_id,
+            society_id=data["society"].id,
+            data=payload,
+        )
+    assert exc.value.status_code == 400

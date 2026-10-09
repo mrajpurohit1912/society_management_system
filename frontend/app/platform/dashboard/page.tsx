@@ -7,6 +7,14 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   ShieldCheck,
   Building2,
   Users,
@@ -19,6 +27,7 @@ import {
   Clock,
   Phone,
   Mail,
+  Eye,
 } from 'lucide-react';
 
 interface PlatformMetrics {
@@ -54,6 +63,7 @@ export default function PlatformDashboardPage() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [provisionResult, setProvisionResult] = useState<ProvisionedSocietyResult | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [viewingLead, setViewingLead] = useState<SocietyLead | null>(null);
 
   const fetchPlatformData = useCallback(async () => {
     try {
@@ -328,6 +338,16 @@ export default function PlatformDashboardPage() {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setViewingLead(lead)}
+                        className="h-8 text-xs flex items-center gap-1.5"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        <span>View</span>
+                      </Button>
+
                       {isProvisioned ? (
                         <span className="text-emerald-600 text-xs font-semibold flex items-center gap-1">
                           <CheckCircle className="h-4 w-4" />
@@ -356,6 +376,109 @@ export default function PlatformDashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* View Lead Details Dialog */}
+      {viewingLead && (
+        <Dialog open={!!viewingLead} onOpenChange={(open) => !open && setViewingLead(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between text-base">
+                <span>{viewingLead.organization_name}</span>
+                <Badge
+                  variant={viewingLead.status === 'provisioned' ? 'default' : 'outline'}
+                  className={`text-xs capitalize ${
+                    viewingLead.status === 'provisioned' ? 'bg-emerald-600 text-white' : 'text-zinc-500'
+                  }`}
+                >
+                  {viewingLead.status.replace(/_/g, ' ')}
+                </Badge>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Prospective Society Inquiry Details & Onboarding Record
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-sm">
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Contact Person</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    {viewingLead.primary_contact_name}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">City</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">{viewingLead.city}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Email Address</span>
+                  <a
+                    href={`mailto:${viewingLead.email}`}
+                    className="text-purple-600 hover:underline flex items-center gap-1 text-xs"
+                  >
+                    <Mail className="h-3 w-3" />
+                    <span>{viewingLead.email}</span>
+                  </a>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Phone Number</span>
+                  <a
+                    href={`tel:${viewingLead.mobile}`}
+                    className="text-zinc-700 dark:text-zinc-300 flex items-center gap-1 text-xs"
+                  >
+                    <Phone className="h-3 w-3" />
+                    <span>{viewingLead.mobile}</span>
+                  </a>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Expected Flats</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    {viewingLead.expected_flats || 'Not specified'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Inquiry Date</span>
+                  <span className="text-xs text-zinc-700 dark:text-zinc-300">
+                    {viewingLead.created_at ? new Date(viewingLead.created_at).toLocaleString() : 'N/A'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs text-zinc-500 block">Lead Reference ID</span>
+                <span className="font-mono text-[11px] text-zinc-400 break-all">{viewingLead.lead_id}</span>
+              </div>
+            </div>
+
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setViewingLead(null)} className="h-8 text-xs">
+                Close
+              </Button>
+              {viewingLead.status !== 'provisioned' && (
+                <Button
+                  size="sm"
+                  disabled={provisionLoading === viewingLead.lead_id}
+                  onClick={async () => {
+                    const id = viewingLead.lead_id;
+                    setViewingLead(null);
+                    await handleProvision(id);
+                  }}
+                  className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-xs font-semibold flex items-center gap-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>1-Click Auto-Provision</span>
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

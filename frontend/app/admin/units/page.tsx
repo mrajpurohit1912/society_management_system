@@ -9,6 +9,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   Building2,
   Home,
   Layers,
@@ -24,6 +32,7 @@ import {
   Trash2,
   Pencil,
   X,
+  Eye,
 } from 'lucide-react';
 
 interface Building {
@@ -104,6 +113,7 @@ export default function AdminUnitsPage() {
   const [editUnitNumber, setEditUnitNumber] = useState('');
   const [editUnitType, setEditUnitType] = useState('flat');
   const [editUnitStatus, setEditUnitStatus] = useState('vacant');
+  const [viewingUnit, setViewingUnit] = useState<{ unit: Unit; floorName: string; buildingName: string } | null>(null);
 
   // Quick Populate Existing Wing State (1 API call)
   const [showQuickPopulateModal, setShowQuickPopulateModal] = useState(false);
@@ -1437,7 +1447,24 @@ export default function AdminUnitsPage() {
                                 </div>
                                 <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
                                   <span className="capitalize">{unit.unit_type}</span>
-                                  <Pencil className="h-3 w-3 text-zinc-400 opacity-60 hover:opacity-100" />
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setViewingUnit({
+                                          unit,
+                                          floorName: floor.floor_name || `Floor ${floor.floor_number}`,
+                                          buildingName: selectedBuilding?.name || 'Building',
+                                        });
+                                      }}
+                                      className="p-0.5 hover:text-indigo-600 rounded text-zinc-400 hover:opacity-100"
+                                      title="View Flat Details"
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                    </button>
+                                    <Pencil className="h-3 w-3 text-zinc-400 opacity-60 hover:opacity-100" />
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -1451,6 +1478,90 @@ export default function AdminUnitsPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* View Unit Details Dialog */}
+      {viewingUnit && (
+        <Dialog open={!!viewingUnit} onOpenChange={(open) => !open && setViewingUnit(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between text-base">
+                <span>Flat {viewingUnit.unit.unit_number}</span>
+                <Badge
+                  variant="outline"
+                  className={`text-xs uppercase font-semibold ${
+                    viewingUnit.unit.status === 'occupied'
+                      ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40'
+                      : 'border-zinc-400 text-zinc-600 dark:text-zinc-400'
+                  }`}
+                >
+                  {viewingUnit.unit.status}
+                </Badge>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Residential Unit & Allocation Details
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-sm">
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Wing / Building</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    {viewingUnit.buildingName}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Floor</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    {viewingUnit.floorName}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Unit Type</span>
+                  <span className="capitalize font-semibold text-zinc-900 dark:text-zinc-100">
+                    {viewingUnit.unit.unit_type}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Occupancy</span>
+                  <span className="capitalize text-zinc-700 dark:text-zinc-300">
+                    {viewingUnit.unit.status}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs text-zinc-500 block">Unit Reference ID</span>
+                <span className="font-mono text-[11px] text-zinc-400 break-all">{viewingUnit.unit.id}</span>
+              </div>
+            </div>
+
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setViewingUnit(null)} className="h-8 text-xs">
+                Close
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const u = viewingUnit.unit;
+                  setViewingUnit(null);
+                  setEditingUnit({ unit: u, floorId: u.floor_id });
+                  setEditUnitNumber(u.unit_number);
+                  setEditUnitType(u.unit_type);
+                  setEditUnitStatus(u.status);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white h-8 text-xs font-semibold flex items-center gap-1.5"
+              >
+                <Pencil className="h-3 w-3" />
+                <span>Edit Flat</span>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

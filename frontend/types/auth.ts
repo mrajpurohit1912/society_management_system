@@ -29,8 +29,10 @@ export interface User {
     status: UserAccountStatus;
     email_verified: boolean;
     active_society_id: string | null;
-    society_role:UserRole | string | null;
+    society_role: UserRole | string | null;
     membership_status: MembershipStatus;
+    unit_id?: string | null;
+    unit_number?: string | null;
 }
 export interface AuthTokens {
       access_token: string;

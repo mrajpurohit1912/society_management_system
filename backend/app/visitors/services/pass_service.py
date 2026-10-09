@@ -27,7 +27,28 @@ class PassService(BaseVisitorService):
                 detail="Society not found.",
             )
 
-        unit = await self.society_repo.get_unit(data.unit_id)
+        target_unit_id = data.unit_id
+        if not target_unit_id:
+            # Auto-resolve unit from active society membership or resident link
+            memberships = await self.society_repo.list_user_memberships(user_id)
+            active_mem = next(
+                (m for m in memberships if m.society_id == society_id and m.unit_id),
+                None,
+            )
+            if active_mem and active_mem.unit_id:
+                target_unit_id = active_mem.unit_id
+            else:
+                res_link = await self.society_repo.get_resident_link_by_user(user_id)
+                if res_link and res_link.unit_id:
+                    target_unit_id = res_link.unit_id
+
+        if not target_unit_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No flat/unit linked to your account. Please complete your flat assignment before generating visitor gate passes.",
+            )
+
+        unit = await self.society_repo.get_unit(target_unit_id)
         if not unit:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -44,7 +65,7 @@ class PassService(BaseVisitorService):
 
         pass_record = VisitorPassModel(
             society_id=society_id,
-            unit_id=data.unit_id,
+            unit_id=target_unit_id,
             created_by_user_id=user_id,
             visitor_name=data.visitor_name,
             visitor_phone=data.visitor_phone,
@@ -64,7 +85,7 @@ class PassService(BaseVisitorService):
             "visitors.pass_created",
             pass_id=str(created.id),
             society_id=str(society_id),
-            unit_id=str(data.unit_id),
+            unit_id=str(target_unit_id),
             visitor=data.visitor_name,
             type=data.visitor_type,
         )

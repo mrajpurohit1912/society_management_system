@@ -230,3 +230,18 @@ def test_complete_payments_and_billing_lifecycle():
     # Collected: 3500 (Oct unit 101) + 3800 (Nov unit 101) = 7300
     assert summary["total_collected"] == 7300.0
     assert summary["pending_approval_count"] == 0
+
+    # ------------------------------------------------------------------------
+    # 11. List Invoices with Role Checks & Filtering
+    # ------------------------------------------------------------------------
+    list_res = client.get(f"/api/v1/societies/{society_id}/invoices", headers=admin_headers)
+    assert list_res.status_code == 200
+    assert len(list_res.json()) >= 3
+
+    unit_inv_res = client.get(f"/api/v1/societies/{society_id}/invoices?unit_id={unit1_id}", headers=admin_headers)
+    assert unit_inv_res.status_code == 200
+    assert len(unit_inv_res.json()) == 2
+
+    # Resident queries invoices list
+    res_inv_res = client.get(f"/api/v1/societies/{society_id}/invoices", headers=resident_headers)
+    assert res_inv_res.status_code == 200

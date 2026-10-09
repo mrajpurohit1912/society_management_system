@@ -9,6 +9,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   CreditCard,
   CheckCircle,
   XCircle,
@@ -19,6 +27,7 @@ import {
   Clock,
   Send,
   Building,
+  Eye,
 } from 'lucide-react';
 
 interface CollectionSummary {
@@ -64,6 +73,8 @@ export default function AdminMaintenancePage() {
   const [summary, setSummary] = useState<CollectionSummary | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [pendingPayments, setPendingPayments] = useState<OfflinePayment[]>([]);
+  const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
+  const [viewingPayment, setViewingPayment] = useState<OfflinePayment | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -383,6 +394,7 @@ export default function AdminMaintenancePage() {
                       <th className="py-3 px-4">Due Date</th>
                       <th className="py-3 px-4">Amount</th>
                       <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -403,6 +415,17 @@ export default function AdminMaintenancePage() {
                           ₹{inv.amount.toLocaleString()}
                         </td>
                         <td className="py-3 px-4">{getStatusBadge(inv.status)}</td>
+                        <td className="py-3 px-4 text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setViewingInvoice(inv)}
+                            className="h-7 text-xs px-2 flex items-center gap-1 ml-auto"
+                          >
+                            <Eye className="h-3 w-3" />
+                            <span>View</span>
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -463,6 +486,16 @@ export default function AdminMaintenancePage() {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setViewingPayment(p)}
+                          className="h-8 text-xs flex items-center gap-1"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>View</span>
+                        </Button>
+
                         <Button
                           size="sm"
                           disabled={isProcessing}
@@ -612,6 +645,182 @@ export default function AdminMaintenancePage() {
             </form>
           </CardContent>
         </Card>
+      )}
+
+      {/* View Invoice Details Dialog */}
+      {viewingInvoice && (
+        <Dialog open={!!viewingInvoice} onOpenChange={(open) => !open && setViewingInvoice(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between text-base">
+                <span>{viewingInvoice.title}</span>
+                {getStatusBadge(viewingInvoice.status)}
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Maintenance Invoice Breakdown • Period: {viewingInvoice.billing_period}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-sm">
+              <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Total Due Amount</span>
+                  <span className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+                    ₹{viewingInvoice.amount.toLocaleString()}
+                  </span>
+                </div>
+                {viewingInvoice.penalty_amount > 0 && (
+                  <div className="text-right">
+                    <span className="text-xs text-red-500 block">Late Fee</span>
+                    <span className="text-xs font-semibold text-red-600">
+                      +₹{viewingInvoice.penalty_amount.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Billing Period</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100 font-mono">
+                    {viewingInvoice.billing_period}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Due Date</span>
+                  <span className="text-xs text-zinc-700 dark:text-zinc-300 font-medium">
+                    {new Date(viewingInvoice.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                  </span>
+                </div>
+              </div>
+
+              {viewingInvoice.description && (
+                <div className="border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                  <span className="text-xs text-zinc-500 block">Description / Notes</span>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">
+                    {viewingInvoice.description}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Unit Reference ID</span>
+                  <span className="font-mono text-[11px] text-zinc-400 break-all">{viewingInvoice.unit_id}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Invoice ID</span>
+                  <span className="font-mono text-[11px] text-zinc-400 break-all">{viewingInvoice.id}</span>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setViewingInvoice(null)} className="h-8 text-xs">
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* View Pending Payment Proof Dialog */}
+      {viewingPayment && (
+        <Dialog open={!!viewingPayment} onOpenChange={(open) => !open && setViewingPayment(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between text-base">
+                <span>Payment Verification</span>
+                <Badge variant="outline" className="capitalize text-xs font-semibold">
+                  {viewingPayment.payment_method.replace(/_/g, ' ')}
+                </Badge>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Resident Offline Payment Submission Record
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-sm">
+              <div className="p-3 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 flex items-center justify-between">
+                <div>
+                  <span className="text-xs text-emerald-700 dark:text-emerald-400 block">Submitted Amount</span>
+                  <span className="text-2xl font-bold text-emerald-950 dark:text-emerald-100">
+                    ₹{viewingPayment.amount.toLocaleString()}
+                  </span>
+                </div>
+                <Badge className="bg-emerald-600 text-white text-xs">Pending Verification</Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Payment Mode</span>
+                  <span className="capitalize font-semibold text-zinc-900 dark:text-zinc-100">
+                    {viewingPayment.payment_method.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Transaction Reference / UTR</span>
+                  <span className="font-mono text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                    {viewingPayment.transaction_reference || 'N/A'}
+                  </span>
+                </div>
+              </div>
+
+              {viewingPayment.description && (
+                <div className="border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                  <span className="text-xs text-zinc-500 block">Resident Note</span>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 italic">
+                    &quot;{viewingPayment.description}&quot;
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Submission Date</span>
+                  <span className="text-xs text-zinc-700 dark:text-zinc-300">
+                    {new Date(viewingPayment.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Payment ID</span>
+                  <span className="font-mono text-[11px] text-zinc-400 break-all">{viewingPayment.id}</span>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setViewingPayment(null)} className="h-8 text-xs">
+                Close
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const id = viewingPayment.id;
+                  setViewingPayment(null);
+                  handleReviewPayment(id, false);
+                }}
+                className="text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900 h-8 text-xs flex items-center gap-1.5"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                <span>Reject</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const id = viewingPayment.id;
+                  setViewingPayment(null);
+                  handleReviewPayment(id, true);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs font-semibold flex items-center gap-1.5"
+              >
+                <CheckCircle className="h-3.5 w-3.5" />
+                <span>Approve & Settle</span>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

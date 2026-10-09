@@ -9,6 +9,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   Wrench,
   PlusCircle,
   Loader2,
@@ -16,6 +24,7 @@ import {
   CheckCircle,
   Clock,
   Star,
+  Eye,
 } from 'lucide-react';
 
 interface Complaint {
@@ -44,6 +53,7 @@ export default function ResidentComplaintsPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [closeLoading, setCloseLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [viewingTicket, setViewingTicket] = useState<Complaint | null>(null);
 
   // New Ticket Form State
   const [showForm, setShowForm] = useState(false);
@@ -454,16 +464,28 @@ export default function ResidentComplaintsPage() {
                         {getStatusBadge(ticket.status)}
                       </div>
 
-                      {isResolved && (
+                      <div className="flex items-center gap-2">
                         <Button
                           size="sm"
-                          onClick={() => setRatingTicketId(ticket.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs flex items-center gap-1 font-semibold"
+                          variant="outline"
+                          onClick={() => setViewingTicket(ticket)}
+                          className="h-7 text-xs flex items-center gap-1.5"
                         >
-                          <Star className="h-3 w-3" />
-                          <span>Verify & Close</span>
+                          <Eye className="h-3 w-3" />
+                          <span>View</span>
                         </Button>
-                      )}
+
+                        {isResolved && (
+                          <Button
+                            size="sm"
+                            onClick={() => setRatingTicketId(ticket.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs flex items-center gap-1 font-semibold"
+                          >
+                            <Star className="h-3 w-3" />
+                            <span>Verify & Close</span>
+                          </Button>
+                        )}
+                      </div>
                     </div>
 
                     <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
@@ -492,6 +514,92 @@ export default function ResidentComplaintsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* View Complaint Ticket Dialog */}
+      <Dialog open={!!viewingTicket} onOpenChange={(open) => !open && setViewingTicket(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="font-mono text-xs font-bold text-zinc-500">
+                {viewingTicket?.ticket_number}
+              </span>
+              {viewingTicket && getPriorityBadge(viewingTicket.priority)}
+              {viewingTicket && getStatusBadge(viewingTicket.status)}
+            </div>
+            <DialogTitle className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+              {viewingTicket?.title}
+            </DialogTitle>
+            <DialogDescription className="flex items-center gap-2 text-xs text-zinc-400">
+              <span>Opened on {viewingTicket && new Date(viewingTicket.created_at).toLocaleDateString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingTicket && (
+            <div className="space-y-4 py-2 text-sm">
+              <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 space-y-1">
+                <span className="text-xs text-zinc-500 font-medium">Issue Description</span>
+                <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                  {viewingTicket.description}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <span className="text-xs text-zinc-500 block">Category</span>
+                  <span className="font-semibold capitalize text-zinc-900 dark:text-zinc-100">{viewingTicket.category}</span>
+                </div>
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <span className="text-xs text-zinc-500 block">Scope</span>
+                  <span className="font-semibold capitalize text-zinc-900 dark:text-zinc-100">{viewingTicket.scope.replace(/_/g, ' ')}</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                <span className="text-xs text-zinc-500">SLA Resolution Target</span>
+                <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
+                  {new Date(viewingTicket.sla_deadline).toLocaleString()}
+                </span>
+              </div>
+
+              {viewingTicket.resolution_notes && (
+                <div className="p-3.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 space-y-1">
+                  <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Technician Resolution Notes</span>
+                  <p className="text-xs text-emerald-950 dark:text-emerald-200">
+                    {viewingTicket.resolution_notes}
+                  </p>
+                </div>
+              )}
+
+              {viewingTicket.resident_rating && (
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+                  <span className="text-zinc-500">Your Rating</span>
+                  <span className="font-bold text-amber-500">★ {viewingTicket.resident_rating} / 5</span>
+                </div>
+              )}
+
+              <DialogFooter className="pt-2 flex sm:justify-between items-center">
+                <Button variant="outline" size="sm" onClick={() => setViewingTicket(null)}>
+                  Close
+                </Button>
+                {viewingTicket.status.toLowerCase() === 'resolved' && (
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5"
+                    onClick={() => {
+                      const id = viewingTicket.id;
+                      setViewingTicket(null);
+                      setRatingTicketId(id);
+                    }}
+                  >
+                    <Star className="h-3.5 w-3.5" />
+                    <span>Verify & Close</span>
+                  </Button>
+                )}
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

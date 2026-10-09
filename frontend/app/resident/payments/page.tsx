@@ -6,6 +6,14 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -17,6 +25,8 @@ import {
   ShieldCheck,
   Send,
   Building,
+  Eye,
+  Home,
 } from 'lucide-react';
 
 interface Invoice {
@@ -48,6 +58,7 @@ export default function ResidentPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
 
   // Selected invoice for payment
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -62,7 +73,10 @@ export default function ResidentPaymentsPage() {
     }
 
     try {
-      const res = await apiClient.get(`/societies/${societyId}/invoices`);
+      const url = user?.unit_id
+        ? `/societies/${societyId}/invoices?unit_id=${user.unit_id}`
+        : `/societies/${societyId}/invoices`;
+      const res = await apiClient.get(url);
       const list = res.data?.data || res.data || [];
       setInvoices(Array.isArray(list) ? list : []);
     } catch (err: unknown) {
@@ -72,7 +86,7 @@ export default function ResidentPaymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [societyId]);
+  }, [societyId, user?.unit_id]);
 
   useEffect(() => {
     fetchInvoices();
@@ -442,6 +456,16 @@ export default function ResidentPaymentsPage() {
                         ₹{inv.amount.toLocaleString()}
                       </span>
 
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setViewingInvoice(inv)}
+                        className="h-8 text-xs font-semibold gap-1.5"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-zinc-500" />
+                        <span>View</span>
+                      </Button>
+
                       {!isPaid && (
                         <Button
                           size="sm"
@@ -462,6 +486,90 @@ export default function ResidentPaymentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* View Invoice Dialog */}
+      <Dialog open={!!viewingInvoice} onOpenChange={(open) => !open && setViewingInvoice(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <FileText className="h-5 w-5 text-emerald-600" />
+              Invoice Details
+            </DialogTitle>
+            <DialogDescription>
+              Maintenance bill breakdown and status
+            </DialogDescription>
+          </DialogHeader>
+          {viewingInvoice && (
+            <div className="space-y-4 py-2 text-sm">
+              <div className="flex justify-between items-center p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                <div>
+                  <p className="font-semibold text-zinc-900 dark:text-zinc-100">{viewingInvoice.title}</p>
+                  <p className="text-xs text-zinc-500 font-mono">Period: {viewingInvoice.billing_period}</p>
+                </div>
+                {getStatusBadge(viewingInvoice.status)}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <span className="text-xs text-zinc-500 block">Total Due</span>
+                  <span className="text-lg font-bold text-emerald-600">₹{viewingInvoice.amount.toLocaleString()}</span>
+                </div>
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <span className="text-xs text-zinc-500 block">Due Date</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">{new Date(viewingInvoice.due_date).toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              {viewingInvoice.penalty_amount > 0 && (
+                <div className="flex justify-between items-center text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <span>Late Penalty Fee:</span>
+                  <span className="font-bold">₹{viewingInvoice.penalty_amount.toLocaleString()}</span>
+                </div>
+              )}
+
+              {viewingInvoice.description && (
+                <div className="space-y-1">
+                  <span className="text-xs text-zinc-500 font-medium">Description</span>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-300 p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                    {viewingInvoice.description}
+                  </p>
+                </div>
+              )}
+
+              <div className="text-xs text-zinc-500 space-y-1 pt-1">
+                <div className="flex justify-between">
+                  <span>Invoice ID:</span>
+                  <span className="font-mono text-[11px]">{viewingInvoice.id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Generated On:</span>
+                  <span>{new Date(viewingInvoice.created_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              <DialogFooter className="pt-2 flex sm:justify-between items-center">
+                <Button variant="outline" size="sm" onClick={() => setViewingInvoice(null)}>
+                  Close
+                </Button>
+                {viewingInvoice.status.toLowerCase() !== 'paid' && (
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                    onClick={() => {
+                      const inv = viewingInvoice;
+                      setViewingInvoice(null);
+                      setSelectedInvoice(inv);
+                      setPaymentMode('online');
+                    }}
+                  >
+                    Pay Now
+                  </Button>
+                )}
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

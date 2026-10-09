@@ -9,6 +9,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   QrCode,
   PlusCircle,
   Loader2,
@@ -20,6 +28,7 @@ import {
   Package,
   ShieldCheck,
   Trash2,
+  Eye,
 } from 'lucide-react';
 
 interface VisitorPass {
@@ -48,6 +57,7 @@ export default function ResidentVisitorsPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [revokeLoading, setRevokeLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [viewingPass, setViewingPass] = useState<VisitorPass | null>(null);
 
   // New Pass Generator Form State
   const [showForm, setShowForm] = useState(false);
@@ -91,11 +101,8 @@ export default function ResidentVisitorsPage() {
     setFeedback(null);
 
     try {
-      // Find unit_id if present from user or fallback to dummy UUID if unit isn't linked
-      const dummyUnitId = '00000000-0000-0000-0000-000000000001';
-
       const res = await apiClient.post(`/societies/${societyId}/visitor-passes`, {
-        unit_id: dummyUnitId,
+        unit_id: user?.unit_id || undefined,
         visitor_name: visitorName.trim(),
         visitor_phone: visitorPhone.trim(),
         visitor_type: visitorType,
@@ -424,15 +431,26 @@ export default function ResidentVisitorsPage() {
                           {pass.passcode}
                         </span>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyToClipboard(pass.passcode)}
-                        className="h-8 text-xs bg-white dark:bg-zinc-900 flex items-center gap-1.5"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                        <span>{copiedPasscode === pass.passcode ? 'Copied!' : 'Copy OTP'}</span>
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewingPass(pass)}
+                          className="h-8 text-xs bg-white dark:bg-zinc-900 flex items-center gap-1.5"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>View</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyToClipboard(pass.passcode)}
+                          className="h-8 text-xs bg-white dark:bg-zinc-900 flex items-center gap-1.5"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          <span>{copiedPasscode === pass.passcode ? 'Copied!' : 'Copy OTP'}</span>
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-100 dark:border-zinc-800">
@@ -458,6 +476,101 @@ export default function ResidentVisitorsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* View Pass Details Dialog */}
+      <Dialog open={!!viewingPass} onOpenChange={(open) => !open && setViewingPass(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <QrCode className="h-5 w-5 text-indigo-600" />
+              Visitor Gate Pass Details
+            </DialogTitle>
+            <DialogDescription>
+              Security gate passcode and visitor verification details
+            </DialogDescription>
+          </DialogHeader>
+          {viewingPass && (
+            <div className="space-y-4 py-2 text-sm">
+              <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-900 text-center space-y-1">
+                <span className="text-[11px] uppercase font-bold text-indigo-700 dark:text-indigo-400 block tracking-wider">
+                  6-Digit Gate Passcode
+                </span>
+                <span className="font-mono text-3xl font-black text-indigo-950 dark:text-indigo-100 tracking-widest block">
+                  {viewingPass.passcode}
+                </span>
+                <p className="text-[11px] text-zinc-500 pt-1">
+                  Visitor should share this code at the security checkpoint.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <span className="text-xs text-zinc-500 block">Visitor Name</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">{viewingPass.visitor_name}</span>
+                </div>
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <span className="text-xs text-zinc-500 block">Phone Number</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">{viewingPass.visitor_phone}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <span className="text-xs text-zinc-500 block">Category</span>
+                  <span className="font-semibold capitalize text-zinc-900 dark:text-zinc-100">{viewingPass.visitor_type}</span>
+                </div>
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  <span className="text-xs text-zinc-500 block">Status</span>
+                  <div className="mt-0.5">{getStatusBadge(viewingPass.status)}</div>
+                </div>
+              </div>
+
+              {viewingPass.vehicle_number && (
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                  <span className="text-xs text-zinc-500">Vehicle Number</span>
+                  <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{viewingPass.vehicle_number}</span>
+                </div>
+              )}
+
+              {viewingPass.expected_delivery_company && (
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                  <span className="text-xs text-zinc-500">Delivery Service</span>
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{viewingPass.expected_delivery_company}</span>
+                </div>
+              )}
+
+              <div className="text-xs text-zinc-500 space-y-1.5 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                <div className="flex justify-between">
+                  <span>Valid From:</span>
+                  <span>{new Date(viewingPass.valid_from).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Valid Until:</span>
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{new Date(viewingPass.valid_until).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-zinc-200 dark:border-zinc-800">
+                  <span>Pass ID:</span>
+                  <span className="font-mono text-[11px]">{viewingPass.id}</span>
+                </div>
+              </div>
+
+              <DialogFooter className="pt-2 flex sm:justify-between items-center">
+                <Button variant="outline" size="sm" onClick={() => setViewingPass(null)}>
+                  Close
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center gap-1.5"
+                  onClick={() => copyToClipboard(viewingPass.passcode)}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>{copiedPasscode === viewingPass.passcode ? 'Copied!' : 'Copy Passcode'}</span>
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

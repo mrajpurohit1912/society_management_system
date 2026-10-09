@@ -197,6 +197,21 @@ def test_complete_visitor_and_gatekeeper_management_lifecycle():
     assert passcode.isdigit()
     assert pass_data["status"] == "active"
 
+    # 5b. Resident Pre-Approves Delivery Pass without explicit unit_id (auto-resolved)
+    auto_pass_payload = {
+        "visitor_name": "Delivery Agent",
+        "visitor_phone": "+919876549999",
+        "visitor_type": "delivery",
+        "valid_hours": 2,
+    }
+    auto_pass_res = client.post(
+        f"/api/v1/societies/{society_id}/visitor-passes",
+        json=auto_pass_payload,
+        headers=resident_headers,
+    )
+    assert auto_pass_res.status_code == 201
+    assert auto_pass_res.json()["unit_id"] == unit_id
+
     # List resident's passes
     list_passes = client.get(
         f"/api/v1/societies/{society_id}/visitor-passes",

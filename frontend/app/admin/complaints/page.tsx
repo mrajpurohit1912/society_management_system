@@ -6,6 +6,14 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -17,6 +25,7 @@ import {
   AlertCircle,
   User,
   CheckSquare,
+  Eye,
 } from 'lucide-react';
 
 interface ComplaintMetrics {
@@ -59,6 +68,7 @@ export default function AdminComplaintsPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [viewingTicket, setViewingTicket] = useState<ComplaintTicket | null>(null);
 
   // Resolution modal state
   const [resolvingTicketId, setResolvingTicketId] = useState<string | null>(null);
@@ -366,19 +376,29 @@ export default function AdminComplaintsPage() {
                         )}
                       </div>
 
-                      {!isResolved && (
-                        <div className="flex items-center gap-2">
-                          {ticket.status === 'open' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isProcessing}
-                              onClick={() => handleMarkInProgress(ticket.id)}
-                              className="h-7 text-xs"
-                            >
-                              Mark In Progress
-                            </Button>
-                          )}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setViewingTicket(ticket)}
+                          className="h-7 text-xs flex items-center gap-1"
+                        >
+                          <Eye className="h-3 w-3" />
+                          <span>View</span>
+                        </Button>
+
+                        {!isResolved && ticket.status === 'open' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isProcessing}
+                            onClick={() => handleMarkInProgress(ticket.id)}
+                            className="h-7 text-xs"
+                          >
+                            Mark In Progress
+                          </Button>
+                        )}
+                        {!isResolved && (
                           <Button
                             size="sm"
                             disabled={isProcessing}
@@ -391,8 +411,8 @@ export default function AdminComplaintsPage() {
                             <CheckCircle className="h-3 w-3" />
                             <span>Resolve</span>
                           </Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
 
                     <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
@@ -431,6 +451,119 @@ export default function AdminComplaintsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* View Complaint Details Dialog */}
+      {viewingTicket && (
+        <Dialog open={!!viewingTicket} onOpenChange={(open) => !open && setViewingTicket(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className="font-mono text-xs font-bold text-zinc-500">
+                  {viewingTicket.ticket_number}
+                </span>
+                {getPriorityBadge(viewingTicket.priority)}
+                {getStatusBadge(viewingTicket.status)}
+                {viewingTicket.is_overdue && (
+                  <span className="flex items-center gap-1 text-[10px] text-red-600 font-bold bg-red-50 dark:bg-red-950/40 px-1.5 py-0.5 rounded">
+                    <AlertTriangle className="h-3 w-3" /> SLA BREACH
+                  </span>
+                )}
+              </div>
+              <DialogTitle className="text-base font-bold">
+                {viewingTicket.title}
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Raised on {new Date(viewingTicket.created_at).toLocaleString()}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-sm">
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                <div>
+                  <span className="text-xs text-zinc-500 block">Category</span>
+                  <span className="capitalize font-semibold text-zinc-900 dark:text-zinc-100">
+                    {viewingTicket.category}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-500 block">Scope</span>
+                  <span className="capitalize text-zinc-700 dark:text-zinc-300">
+                    {viewingTicket.scope.replace(/_/g, ' ')}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs text-zinc-500 block mb-1">Issue Description</span>
+                <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                  {viewingTicket.description}
+                </div>
+              </div>
+
+              {viewingTicket.resolution_notes && (
+                <div>
+                  <span className="text-xs text-emerald-700 dark:text-emerald-400 block mb-1 font-semibold">
+                    Resolution Notes
+                  </span>
+                  <div className="p-2.5 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 text-xs text-emerald-900 dark:text-emerald-300">
+                    {viewingTicket.resolution_notes}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 border-t border-zinc-100 dark:border-zinc-800 pt-2 text-xs">
+                <div>
+                  <span className="text-zinc-400 block">Assigned Technician</span>
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                    {viewingTicket.assigned_vendor_name || 'Unassigned'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-zinc-400 block">SLA Due By</span>
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                    {new Date(viewingTicket.sla_deadline).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setViewingTicket(null)} className="h-8 text-xs">
+                Close
+              </Button>
+              {viewingTicket.status === 'open' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const id = viewingTicket.id;
+                    setViewingTicket(null);
+                    handleMarkInProgress(id);
+                  }}
+                  className="h-8 text-xs"
+                >
+                  Mark In Progress
+                </Button>
+              )}
+              {viewingTicket.status.toLowerCase() !== 'resolved' && viewingTicket.status.toLowerCase() !== 'closed' && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const id = viewingTicket.id;
+                    setViewingTicket(null);
+                    setResolvingTicketId(id);
+                    setResolutionNotes('');
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs font-semibold flex items-center gap-1.5"
+                >
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  <span>Resolve Ticket</span>
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

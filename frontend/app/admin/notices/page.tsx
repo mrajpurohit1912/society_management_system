@@ -6,6 +6,14 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -43,6 +51,7 @@ export default function AdminNoticesPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [viewingNotice, setViewingNotice] = useState<Notice | null>(null);
 
   // Modal / Form state
   const [showPublishModal, setShowPublishModal] = useState(false);
@@ -371,10 +380,18 @@ export default function AdminNoticesPage() {
                         </Badge>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-zinc-500 flex items-center gap-1">
-                          <Eye className="h-3.5 w-3.5" />
-                          <span>{n.read_count || 0} reads</span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewingNotice(n)}
+                          className="h-7 text-xs flex items-center gap-1"
+                        >
+                          <Eye className="h-3 w-3" />
+                          <span>View</span>
+                        </Button>
+                        <span className="text-xs text-zinc-500 hidden sm:inline">
+                          {n.read_count || 0} reads
                         </span>
                         <Button
                           variant="ghost"
@@ -412,6 +429,54 @@ export default function AdminNoticesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* View Notice Reader Dialog */}
+      {viewingNotice && (
+        <Dialog open={!!viewingNotice} onOpenChange={(open) => !open && setViewingNotice(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1">
+                {viewingNotice.is_pinned && (
+                  <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded">
+                    <Pin className="h-3 w-3" /> Pinned
+                  </span>
+                )}
+                {getPriorityBadge(viewingNotice.priority)}
+                <Badge variant="outline" className="text-[10px] capitalize">
+                  {viewingNotice.category.replace(/_/g, ' ')}
+                </Badge>
+              </div>
+              <DialogTitle className="text-lg font-bold">
+                {viewingNotice.title}
+              </DialogTitle>
+              <DialogDescription className="text-xs flex items-center gap-2">
+                <span>Published on {new Date(viewingNotice.published_at).toLocaleString()}</span>
+                <span>• Audience: {viewingNotice.target_audience.replace(/_/g, ' ')}</span>
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-3">
+              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-[50vh] overflow-y-auto">
+                {viewingNotice.content}
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-zinc-500 border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                <span className="flex items-center gap-1">
+                  <Eye className="h-3.5 w-3.5" />
+                  <span>{viewingNotice.read_count || 0} residents read this notice</span>
+                </span>
+                <span className="font-mono text-[11px] text-zinc-400">Notice ID: {viewingNotice.id.slice(0, 8)}...</span>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setViewingNotice(null)} className="h-8 text-xs">
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

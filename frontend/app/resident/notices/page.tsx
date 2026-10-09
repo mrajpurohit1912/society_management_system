@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   Bell,
   Pin,
   Calendar,
@@ -37,6 +45,7 @@ export default function ResidentNoticesPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [viewingNotice, setViewingNotice] = useState<Notice | null>(null);
 
   const fetchNotices = useCallback(async () => {
     if (!societyId) {
@@ -174,7 +183,17 @@ export default function ResidentNoticesPage() {
                       Audience: {notice.target_audience.replace(/_/g, ' ')}
                     </span>
 
-                    <div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setViewingNotice(notice)}
+                        className="h-7 text-xs flex items-center gap-1.5"
+                      >
+                        <Eye className="h-3 w-3" />
+                        <span>View</span>
+                      </Button>
+
                       {isRead ? (
                         <span className="text-emerald-600 font-medium flex items-center gap-1">
                           <CheckCircle className="h-3.5 w-3.5" />
@@ -191,7 +210,7 @@ export default function ResidentNoticesPage() {
                           {isProcessing ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
                           ) : (
-                            <Eye className="h-3 w-3" />
+                            <CheckCircle className="h-3 w-3" />
                           )}
                           <span>Mark as Read</span>
                         </Button>
@@ -204,6 +223,66 @@ export default function ResidentNoticesPage() {
           })}
         </div>
       )}
+
+      {/* View Notice Dialog */}
+      <Dialog open={!!viewingNotice} onOpenChange={(open) => !open && setViewingNotice(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              {viewingNotice?.is_pinned && (
+                <span className="flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded">
+                  <Pin className="h-3 w-3" /> Pinned
+                </span>
+              )}
+              {viewingNotice && getPriorityBadge(viewingNotice.priority)}
+              <Badge variant="outline" className="text-[10px] capitalize">
+                {viewingNotice?.category.replace(/_/g, ' ')}
+              </Badge>
+            </div>
+            <DialogTitle className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+              {viewingNotice?.title}
+            </DialogTitle>
+            <DialogDescription className="flex items-center gap-2 text-xs text-zinc-400">
+              <Calendar className="h-3.5 w-3.5" />
+              <span>
+                Published on {viewingNotice && new Date(viewingNotice.published_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingNotice && (
+            <div className="space-y-4 py-2 text-sm">
+              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                {viewingNotice.content}
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-zinc-400 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                <span>Audience: <strong className="text-zinc-700 dark:text-zinc-300 capitalize">{viewingNotice.target_audience.replace(/_/g, ' ')}</strong></span>
+                <span>Notice ID: <code className="font-mono text-[11px]">{viewingNotice.id}</code></span>
+              </div>
+
+              <DialogFooter className="pt-2 flex sm:justify-between items-center">
+                <Button variant="outline" size="sm" onClick={() => setViewingNotice(null)}>
+                  Close
+                </Button>
+                {!viewingNotice.is_read_by_me && (
+                  <Button
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center gap-1.5"
+                    onClick={() => {
+                      handleMarkRead(viewingNotice.id);
+                      setViewingNotice({ ...viewingNotice, is_read_by_me: true });
+                    }}
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    <span>Acknowledge Notice</span>
+                  </Button>
+                )}
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
