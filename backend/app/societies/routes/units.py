@@ -12,6 +12,7 @@ from app.societies.schemas import (
     UnitUpdate,
     UnitResponse,
 )
+from app.societies.repository import SocietyRepository
 from app.societies import routes
 from app.societies.routes.common import safe_transaction
 
@@ -152,7 +153,7 @@ async def list_society_units(
     List all units across a society (with optional building/wing filter).
     Accessible to any authenticated user (e.g. resident picking their flat on onboarding).
     """
-    repo = routes.SocietyRepository(db)
+    repo = SocietyRepository(db)
     units = await repo.list_all_units_in_society(society_id, building_id=building_id)
     return {
         "success": True,

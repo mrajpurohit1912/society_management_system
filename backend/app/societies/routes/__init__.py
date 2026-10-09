@@ -16,6 +16,7 @@ from app.societies.services import (
     BulkProvisionService,
     MembershipService,
 )
+from app.societies.repository import SocietyRepository
 
 from app.societies.routes.memberships import router as memberships_router
 from app.societies.routes.societies import router as societies_crud_router

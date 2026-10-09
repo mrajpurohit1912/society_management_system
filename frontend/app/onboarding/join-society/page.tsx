@@ -143,7 +143,7 @@ function JoinSocietyContent() {
     }
 
     const selectedSoc = societies.find((s) => s.id === selectedSocietyId);
-    if (selectedSoc?.status === 'pending_setup' || buildings.length === 0) {
+    if (selectedSoc?.status === 'pending_setup' || buildings.length === 0 || units.length === 0) {
       setError('This society is still in setup mode and has not opened resident registrations yet.');
       return;
     }
@@ -330,7 +330,7 @@ function JoinSocietyContent() {
                         <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
                         <span>Loading society wings & flats...</span>
                       </div>
-                    ) : buildings.length > 0 ? (
+                    ) : buildings.length > 0 && units.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label htmlFor="wing" className="text-xs text-zinc-500">
@@ -365,11 +365,17 @@ function JoinSocietyContent() {
                             className="w-full h-10 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 text-sm"
                           >
                             <option value="">-- Select Flat Number --</option>
-                            {availableUnits.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.building_name ? `${u.building_name} - ` : ''}Flat {u.unit_number} ({u.status})
+                            {availableUnits.length === 0 ? (
+                              <option value="" disabled>
+                                {selectedBuildingId ? 'No flats configured in this wing' : 'No flats configured'}
                               </option>
-                            ))}
+                            ) : (
+                              availableUnits.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.building_name ? `${u.building_name} - ` : ''}Flat {u.unit_number} ({u.status})
+                                </option>
+                              ))
+                            )}
                           </select>
                         </div>
                       </div>
@@ -420,7 +426,7 @@ function JoinSocietyContent() {
 
                 {(() => {
                   const selectedSoc = societies.find((s) => s.id === selectedSocietyId);
-                  const isSetupPending = selectedSoc?.status === 'pending_setup' || buildings.length === 0;
+                  const isSetupPending = selectedSoc?.status === 'pending_setup' || buildings.length === 0 || units.length === 0;
 
                   return (
                     <Button
