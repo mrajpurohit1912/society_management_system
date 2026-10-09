@@ -41,8 +41,13 @@ class ComplaintService(BaseComplaintService):
                 detail="Society not found.",
             )
 
-        if payload.unit_id:
-            unit = await self.society_repo.get_unit(payload.unit_id)
+        unit_id = payload.unit_id
+        if not unit_id:
+            user_unit = await self.complaint_repo.get_user_unit_in_society(society_id, user_id)
+            if user_unit:
+                unit_id = user_unit.id
+        else:
+            unit = await self.society_repo.get_unit(unit_id)
             if not unit:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -61,7 +66,7 @@ class ComplaintService(BaseComplaintService):
 
         ticket = ComplaintTicketModel(
             society_id=society_id,
-            unit_id=payload.unit_id,
+            unit_id=unit_id,
             created_by_user_id=user_id,
             ticket_number=ticket_number,
             title=payload.title,
@@ -279,7 +284,12 @@ class ComplaintService(BaseComplaintService):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Complaint ticket not found.",
             )
-        return self._format_ticket(ticket)
+        fallback_unit = None
+        if not ticket.unit:
+            fallback_unit = await self.complaint_repo.get_user_unit_in_society(
+                society_id, ticket.created_by_user_id
+            )
+        return self._format_ticket(ticket, fallback_unit=fallback_unit)
 
     async def list_complaints(
         self,
@@ -298,7 +308,16 @@ class ComplaintService(BaseComplaintService):
             unit_id=unit_id,
             assigned_to_user_id=assigned_to_user_id,
         )
-        return [self._format_ticket(t) for t in tickets]
+        fallback_units: Dict[uuid.UUID, Any] = {}
+        for t in tickets:
+            if not t.unit and t.created_by_user_id not in fallback_units:
+                fallback_units[t.created_by_user_id] = await self.complaint_repo.get_user_unit_in_society(
+                    society_id, t.created_by_user_id
+                )
+        return [
+            self._format_ticket(t, fallback_unit=fallback_units.get(t.created_by_user_id))
+            for t in tickets
+        ]
 
     async def list_user_complaints(
         self, society_id: uuid.UUID, user_id: uuid.UUID, status_filter: Optional[str] = None
@@ -306,13 +325,18 @@ class ComplaintService(BaseComplaintService):
         tickets = await self.complaint_repo.list_tickets_by_user(
             society_id=society_id, user_id=user_id, status=status_filter
         )
-        return [self._format_ticket(t) for t in tickets]
+        user_unit = None
+        if any(not t.unit for t in tickets):
+            user_unit = await self.complaint_repo.get_user_unit_in_society(society_id, user_id)
+        return [self._format_ticket(t, fallback_unit=user_unit) for t in tickets]
 
     async def get_summary_metrics(self, society_id: uuid.UUID) -> Dict[str, Any]:
         return await self.complaint_repo.get_summary_metrics(society_id)
 
-    def _format_ticket(self, ticket: ComplaintTicketModel) -> Dict[str, Any]:
-        """Maps ticket to dictionary with calculated is_overdue SLA flag."""
+    def _format_ticket(
+        self, ticket: ComplaintTicketModel, fallback_unit: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """Maps ticket to dictionary with calculated is_overdue SLA flag and resident/unit details."""
         now = datetime.now(timezone.utc)
         sla_deadline = ticket.sla_deadline
         if sla_deadline.tzinfo is None:
@@ -325,10 +349,54 @@ class ComplaintService(BaseComplaintService):
 
         comments_count = len(ticket.comments) if hasattr(ticket, "comments") and ticket.comments else 0
 
+        # Unit context
+        unit_obj = ticket.unit or fallback_unit
+        unit_number = unit_obj.unit_number if unit_obj else None
+        floor_number = (
+            unit_obj.floor.floor_number
+            if (unit_obj and hasattr(unit_obj, "floor") and unit_obj.floor)
+            else None
+        )
+        building_name = (
+            unit_obj.floor.building.name
+            if (
+                unit_obj
+                and hasattr(unit_obj, "floor")
+                and unit_obj.floor
+                and hasattr(unit_obj.floor, "building")
+                and unit_obj.floor.building
+            )
+            else None
+        )
+
+        # Creator / Resident details
+        creator_name = (
+            f"{ticket.creator.first_name} {ticket.creator.last_name}".strip()
+            if hasattr(ticket, "creator") and ticket.creator
+            else None
+        )
+        creator_email = None
+        creator_phone = None
+        if hasattr(ticket, "creator") and ticket.creator and hasattr(ticket.creator, "credentials") and ticket.creator.credentials:
+            for cred in ticket.creator.credentials:
+                if not creator_email and (cred.provider in ("email", "google") or "@" in cred.identifier):
+                    creator_email = cred.identifier
+                elif not creator_phone and (
+                    cred.provider == "phone"
+                    or (not "@" in cred.identifier and cred.identifier.replace("+", "").replace(" ", "").isdigit())
+                ):
+                    creator_phone = cred.identifier
+            if not creator_email and not creator_phone and ticket.creator.credentials:
+                first_cred = ticket.creator.credentials[0].identifier
+                if "@" in first_cred:
+                    creator_email = first_cred
+                else:
+                    creator_phone = first_cred
+
         return {
             "id": ticket.id,
             "society_id": ticket.society_id,
-            "unit_id": ticket.unit_id,
+            "unit_id": ticket.unit_id or (unit_obj.id if unit_obj else None),
             "created_by_user_id": ticket.created_by_user_id,
             "ticket_number": ticket.ticket_number,
             "title": ticket.title,
@@ -354,4 +422,10 @@ class ComplaintService(BaseComplaintService):
             "created_at": ticket.created_at,
             "updated_at": ticket.updated_at,
             "comments_count": comments_count,
+            "creator_name": creator_name,
+            "creator_email": creator_email,
+            "creator_phone": creator_phone,
+            "unit_number": unit_number,
+            "building_name": building_name,
+            "floor_number": floor_number,
         }

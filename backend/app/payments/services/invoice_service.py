@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import structlog
 from fastapi import HTTPException, status
 
 from app.payments.services.base import BasePaymentService
 from app.payments.models import MaintenanceInvoiceModel, InvoiceStatus
-from app.payments.schemas import InvoiceCreate, BulkInvoiceGenerateRequest
+from app.payments.schemas import InvoiceCreate, BulkInvoiceGenerateRequest, InvoiceResponse
 
 logger = structlog.get_logger(__name__)
 
@@ -16,9 +16,87 @@ class InvoiceService(BasePaymentService):
     Domain service for maintenance invoice lifecycle management.
     """
 
+    def _format_invoice(
+        self,
+        invoice: MaintenanceInvoiceModel,
+        resident_lookup: Optional[Dict[uuid.UUID, Dict[str, Any]]] = None,
+    ) -> InvoiceResponse:
+        unit = getattr(invoice, "unit", None)
+        unit_number = unit.unit_number if unit else None
+        floor_number = (
+            unit.floor.floor_number
+            if (unit and hasattr(unit, "floor") and unit.floor)
+            else None
+        )
+        building_name = (
+            unit.floor.building.name
+            if (
+                unit
+                and hasattr(unit, "floor")
+                and unit.floor
+                and hasattr(unit.floor, "building")
+                and unit.floor.building
+            )
+            else None
+        )
+
+        resident_name = None
+        resident_email = None
+        resident_phone = None
+        residency_type = None
+
+        if unit and hasattr(unit, "residents") and unit.residents:
+            primary_res = next((r for r in unit.residents if getattr(r, "is_primary_contact", False)), None)
+            if not primary_res:
+                primary_res = next((r for r in unit.residents if getattr(r, "status", "") == "active"), unit.residents[0])
+
+            if primary_res and hasattr(primary_res, "user") and primary_res.user:
+                resident_name = f"{primary_res.user.first_name} {primary_res.user.last_name}".strip()
+                residency_type = getattr(primary_res, "residency_type", None)
+                if hasattr(primary_res.user, "credentials") and primary_res.user.credentials:
+                    for c in primary_res.user.credentials:
+                        if not resident_email and (c.provider in ("email", "google") or "@" in c.identifier):
+                            resident_email = c.identifier
+                        elif not resident_phone and (c.provider == "phone" or c.identifier.replace("+", "").replace(" ", "").isdigit()):
+                            resident_phone = c.identifier
+                    if not resident_email and not resident_phone and primary_res.user.credentials:
+                        first_c = primary_res.user.credentials[0].identifier
+                        if "@" in first_c:
+                            resident_email = first_c
+                        else:
+                            resident_phone = first_c
+
+        if not resident_name and resident_lookup and invoice.unit_id in resident_lookup:
+            res_info = resident_lookup[invoice.unit_id]
+            resident_name = res_info.get("resident_name")
+            resident_email = res_info.get("resident_email")
+            resident_phone = res_info.get("resident_phone")
+            residency_type = res_info.get("residency_type")
+
+        return InvoiceResponse(
+            id=invoice.id,
+            society_id=invoice.society_id,
+            unit_id=invoice.unit_id,
+            billing_period=invoice.billing_period,
+            title=invoice.title,
+            description=invoice.description,
+            amount=invoice.amount,
+            due_date=invoice.due_date,
+            penalty_amount=invoice.penalty_amount,
+            status=invoice.status,
+            created_at=invoice.created_at,
+            unit_number=unit_number,
+            building_name=building_name,
+            floor_number=floor_number,
+            resident_name=resident_name,
+            resident_email=resident_email,
+            resident_phone=resident_phone,
+            residency_type=residency_type,
+        )
+
     async def create_invoice(
         self, society_id: uuid.UUID, data: InvoiceCreate
-    ) -> MaintenanceInvoiceModel:
+    ) -> InvoiceResponse:
         society = await self.society_repo.get_society(society_id)
         if not society:
             raise HTTPException(
@@ -60,11 +138,11 @@ class InvoiceService(BasePaymentService):
             unit_id=str(data.unit_id),
             amount=data.amount,
         )
-        return created
+        return await self.get_invoice_details(created.id)
 
     async def bulk_generate_monthly_invoices(
         self, society_id: uuid.UUID, data: BulkInvoiceGenerateRequest
-    ) -> List[MaintenanceInvoiceModel]:
+    ) -> List[InvoiceResponse]:
         society = await self.society_repo.get_society(society_id)
         if not society:
             raise HTTPException(
@@ -115,7 +193,8 @@ class InvoiceService(BasePaymentService):
             period=data.billing_period,
             count=len(created),
         )
-        return created
+        resident_map = await self.payment_repo.get_unit_residents_map(society_id)
+        return [self._format_invoice(inv, resident_map) for inv in created]
 
     async def list_society_invoices(
         self,
@@ -123,26 +202,32 @@ class InvoiceService(BasePaymentService):
         unit_id: Optional[uuid.UUID] = None,
         status_filter: Optional[str] = None,
         billing_period: Optional[str] = None,
-    ) -> List[MaintenanceInvoiceModel]:
-        return await self.payment_repo.list_invoices_by_society(
+    ) -> List[InvoiceResponse]:
+        invoices = await self.payment_repo.list_invoices_by_society(
             society_id=society_id,
             unit_id=unit_id,
             status=status_filter,
             billing_period=billing_period,
         )
+        resident_map = await self.payment_repo.get_unit_residents_map(society_id)
+        return [self._format_invoice(inv, resident_map) for inv in invoices]
 
     async def get_invoice_details(
         self, invoice_id: uuid.UUID
-    ) -> MaintenanceInvoiceModel:
+    ) -> InvoiceResponse:
         invoice = await self.payment_repo.get_invoice_by_id(invoice_id)
         if not invoice:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Invoice not found.",
             )
-        return invoice
+        resident_map = await self.payment_repo.get_unit_residents_map(invoice.society_id)
+        return self._format_invoice(invoice, resident_map)
 
     async def get_unit_dues(
         self, unit_id: uuid.UUID
-    ) -> List[MaintenanceInvoiceModel]:
-        return await self.payment_repo.list_invoices_by_unit(unit_id)
+    ) -> List[InvoiceResponse]:
+        invoices = await self.payment_repo.list_invoices_by_unit(unit_id)
+        society_id = invoices[0].society_id if invoices else None
+        resident_map = await self.payment_repo.get_unit_residents_map(society_id) if society_id else None
+        return [self._format_invoice(inv, resident_map) for inv in invoices]

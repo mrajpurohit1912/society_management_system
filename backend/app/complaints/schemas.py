@@ -93,6 +93,12 @@ class ComplaintTicketResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     comments_count: int = 0
+    creator_name: Optional[str] = None
+    creator_email: Optional[str] = None
+    creator_phone: Optional[str] = None
+    unit_number: Optional[str] = None
+    building_name: Optional[str] = None
+    floor_number: Optional[int] = None
 
 
 class ComplaintSummaryMetrics(BaseModel):

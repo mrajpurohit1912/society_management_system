@@ -11,6 +11,14 @@ from app.payments.models import (
     InvoiceStatus,
     PaymentStatus,
 )
+from app.societies.models import (
+    UnitModel,
+    FloorModel,
+    BuildingModel,
+    UnitResidentModel,
+    UserSocietyRoleModel,
+)
+from app.authentication.models import UserModel
 
 
 class PaymentRepository:
@@ -21,6 +29,19 @@ class PaymentRepository:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _eager_load_invoice_options(self):
+        return [
+            selectinload(MaintenanceInvoiceModel.society),
+            selectinload(MaintenanceInvoiceModel.unit)
+                .selectinload(UnitModel.floor)
+                .selectinload(FloorModel.building),
+            selectinload(MaintenanceInvoiceModel.unit)
+                .selectinload(UnitModel.residents)
+                .selectinload(UnitResidentModel.user)
+                .selectinload(UserModel.credentials),
+            selectinload(MaintenanceInvoiceModel.payments),
+        ]
 
     # ---------------------------------------------------------
     # Invoices
@@ -46,11 +67,7 @@ class PaymentRepository:
         stmt = (
             select(MaintenanceInvoiceModel)
             .where(MaintenanceInvoiceModel.id == invoice_id)
-            .options(
-                selectinload(MaintenanceInvoiceModel.society),
-                selectinload(MaintenanceInvoiceModel.unit),
-                selectinload(MaintenanceInvoiceModel.payments),
-            )
+            .options(*self._eager_load_invoice_options())
         )
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
@@ -75,6 +92,7 @@ class PaymentRepository:
         stmt = (
             select(MaintenanceInvoiceModel)
             .where(MaintenanceInvoiceModel.society_id == society_id)
+            .options(*self._eager_load_invoice_options())
             .order_by(MaintenanceInvoiceModel.created_at.desc())
         )
         if unit_id:
@@ -93,10 +111,45 @@ class PaymentRepository:
         stmt = (
             select(MaintenanceInvoiceModel)
             .where(MaintenanceInvoiceModel.unit_id == unit_id)
+            .options(*self._eager_load_invoice_options())
             .order_by(MaintenanceInvoiceModel.created_at.desc())
         )
         res = await self.db.execute(stmt)
         return list(res.scalars().all())
+
+    async def get_unit_residents_map(
+        self, society_id: uuid.UUID
+    ) -> Dict[uuid.UUID, Dict[str, Any]]:
+        """Maps unit_id to user info from UserSocietyRoleModel for units in society."""
+        query = (
+            select(UserSocietyRoleModel)
+            .options(
+                selectinload(UserSocietyRoleModel.user).selectinload(UserModel.credentials)
+            )
+            .where(
+                UserSocietyRoleModel.society_id == society_id,
+                UserSocietyRoleModel.unit_id.is_not(None),
+            )
+        )
+        res = await self.db.execute(query)
+        mapping: Dict[uuid.UUID, Dict[str, Any]] = {}
+        for role in res.scalars().all():
+            if role.unit_id and role.unit_id not in mapping and role.user:
+                email = None
+                phone = None
+                if role.user.credentials:
+                    for c in role.user.credentials:
+                        if not email and (c.provider in ("email", "google") or "@" in c.identifier):
+                            email = c.identifier
+                        elif not phone and (c.provider == "phone" or c.identifier.replace("+", "").replace(" ", "").isdigit()):
+                            phone = c.identifier
+                mapping[role.unit_id] = {
+                    "resident_name": f"{role.user.first_name} {role.user.last_name}".strip(),
+                    "resident_email": email,
+                    "resident_phone": phone,
+                    "residency_type": role.role,
+                }
+        return mapping
 
     async def update_invoice(
         self, invoice: MaintenanceInvoiceModel
@@ -160,6 +213,13 @@ class PaymentRepository:
             .where(
                 PaymentModel.society_id == society_id,
                 PaymentModel.status == PaymentStatus.PENDING_APPROVAL.value,
+            )
+            .options(
+                selectinload(PaymentModel.user).selectinload(UserModel.credentials),
+                selectinload(PaymentModel.invoice)
+                    .selectinload(MaintenanceInvoiceModel.unit)
+                    .selectinload(UnitModel.floor)
+                    .selectinload(FloorModel.building),
             )
             .order_by(PaymentModel.created_at.asc())
         )

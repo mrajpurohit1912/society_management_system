@@ -42,6 +42,26 @@ interface Complaint {
   resident_rating?: number;
   resident_feedback?: string;
   created_at: string;
+  unit_number?: string;
+  building_name?: string;
+  floor_number?: number;
+}
+
+function formatDateTime(dateStr?: string | null): string {
+  if (!dateStr) return 'N/A';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
 export default function ResidentComplaintsPage() {
@@ -462,6 +482,11 @@ export default function ResidentComplaintsPage() {
                         </h2>
                         {getPriorityBadge(ticket.priority)}
                         {getStatusBadge(ticket.status)}
+                        {ticket.unit_number && (
+                          <span className="text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-900">
+                            {ticket.building_name ? `${ticket.building_name} • ` : ''}Flat {ticket.unit_number}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -499,12 +524,12 @@ export default function ResidentComplaintsPage() {
                       </div>
                     )}
 
-                    <div className="flex items-center gap-3 text-[11px] text-zinc-400 pt-1">
+                    <div className="flex items-center gap-3 text-[11px] text-zinc-400 pt-1 flex-wrap">
                       <span className="capitalize">{ticket.category}</span>
                       <span>• {ticket.scope.replace(/_/g, ' ')}</span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        <span>SLA Deadline: {new Date(ticket.sla_deadline).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>SLA Deadline: {formatDateTime(ticket.sla_deadline)}</span>
                       </span>
                     </div>
                   </div>
@@ -530,7 +555,7 @@ export default function ResidentComplaintsPage() {
               {viewingTicket?.title}
             </DialogTitle>
             <DialogDescription className="flex items-center gap-2 text-xs text-zinc-400">
-              <span>Opened on {viewingTicket && new Date(viewingTicket.created_at).toLocaleDateString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+              <span>Opened on {viewingTicket && formatDateTime(viewingTicket.created_at)}</span>
             </DialogDescription>
           </DialogHeader>
 
@@ -554,10 +579,20 @@ export default function ResidentComplaintsPage() {
                 </div>
               </div>
 
+              {viewingTicket.unit_number && (
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30">
+                  <span className="text-xs text-zinc-500 block">Registered Flat Unit</span>
+                  <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100">
+                    {viewingTicket.building_name ? `${viewingTicket.building_name} • ` : ''}Flat {viewingTicket.unit_number}
+                    {viewingTicket.floor_number !== undefined && viewingTicket.floor_number !== null ? ` (Floor ${viewingTicket.floor_number})` : ''}
+                  </span>
+                </div>
+              )}
+
               <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                 <span className="text-xs text-zinc-500">SLA Resolution Target</span>
                 <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
-                  {new Date(viewingTicket.sla_deadline).toLocaleString()}
+                  {formatDateTime(viewingTicket.sla_deadline)}
                 </span>
               </div>
 

@@ -40,6 +40,13 @@ class InvoiceResponse(BaseModel):
     penalty_amount: float = 0.0
     status: str
     created_at: datetime
+    unit_number: Optional[str] = None
+    building_name: Optional[str] = None
+    floor_number: Optional[int] = None
+    resident_name: Optional[str] = None
+    resident_email: Optional[str] = None
+    resident_phone: Optional[str] = None
+    residency_type: Optional[str] = None
 
 
 # --- Payment Transaction DTOs ---
@@ -103,6 +110,12 @@ class PaymentResponse(BaseModel):
     approved_by: Optional[uuid.UUID] = None
     rejection_reason: Optional[str] = None
     created_at: datetime
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_phone: Optional[str] = None
+    unit_number: Optional[str] = None
+    building_name: Optional[str] = None
+    invoice_title: Optional[str] = None
 
 
 # --- Receipt DTOs ---

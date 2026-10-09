@@ -17,6 +17,7 @@ from app.payments.schemas import (
     VerifyOnlinePaymentRequest,
     SubmitOfflinePaymentRequest,
     ReviewOfflinePaymentRequest,
+    PaymentResponse,
 )
 
 logger = structlog.get_logger(__name__)
@@ -253,8 +254,66 @@ class TransactionService(BasePaymentService):
             )
         return receipt
 
-    async def list_pending_offline_payments(self, society_id: uuid.UUID) -> List[PaymentModel]:
-        return await self.payment_repo.list_pending_approvals(society_id)
+    def _format_payment(self, payment: PaymentModel) -> PaymentResponse:
+        user_name = None
+        user_email = None
+        user_phone = None
+        if hasattr(payment, "user") and payment.user:
+            user_name = f"{payment.user.first_name} {payment.user.last_name}".strip()
+            if hasattr(payment.user, "credentials") and payment.user.credentials:
+                for c in payment.user.credentials:
+                    if not user_email and (c.provider in ("email", "google") or "@" in c.identifier):
+                        user_email = c.identifier
+                    elif not user_phone and (
+                        c.provider == "phone"
+                        or (not "@" in c.identifier and c.identifier.replace("+", "").replace(" ", "").isdigit())
+                    ):
+                        user_phone = c.identifier
+                if not user_email and not user_phone and payment.user.credentials:
+                    first_c = payment.user.credentials[0].identifier
+                    if "@" in first_c:
+                        user_email = first_c
+                    else:
+                        user_phone = first_c
+
+        unit_number = None
+        building_name = None
+        invoice_title = None
+
+        if hasattr(payment, "invoice") and payment.invoice:
+            invoice_title = payment.invoice.title
+            inv_unit = getattr(payment.invoice, "unit", None)
+            if inv_unit:
+                unit_number = inv_unit.unit_number
+                if hasattr(inv_unit, "floor") and inv_unit.floor:
+                    if hasattr(inv_unit.floor, "building") and inv_unit.floor.building:
+                        building_name = inv_unit.floor.building.name
+
+        return PaymentResponse(
+            id=payment.id,
+            society_id=payment.society_id,
+            invoice_id=payment.invoice_id,
+            unit_id=payment.unit_id,
+            user_id=payment.user_id,
+            amount=payment.amount,
+            payment_method=payment.payment_method,
+            status=payment.status,
+            transaction_reference=payment.transaction_reference,
+            description=payment.description,
+            approved_by=payment.approved_by,
+            rejection_reason=payment.rejection_reason,
+            created_at=payment.created_at,
+            user_name=user_name,
+            user_email=user_email,
+            user_phone=user_phone,
+            unit_number=unit_number,
+            building_name=building_name,
+            invoice_title=invoice_title,
+        )
+
+    async def list_pending_offline_payments(self, society_id: uuid.UUID) -> List[PaymentResponse]:
+        payments = await self.payment_repo.list_pending_approvals(society_id)
+        return [self._format_payment(p) for p in payments]
 
     async def get_society_collection_summary(self, society_id: uuid.UUID) -> Dict[str, Any]:
         return await self.payment_repo.get_collection_summary(society_id)

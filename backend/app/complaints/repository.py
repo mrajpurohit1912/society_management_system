@@ -10,6 +10,14 @@ from app.complaints.models import (
     ComplaintCommentModel,
     ComplaintStatus,
 )
+from app.authentication.models import UserModel
+from app.societies.models import (
+    UnitModel,
+    FloorModel,
+    BuildingModel,
+    UserSocietyRoleModel,
+    UnitResidentModel,
+)
 
 
 class ComplaintRepository:
@@ -21,6 +29,15 @@ class ComplaintRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    def _eager_load_options(self):
+        return [
+            selectinload(ComplaintTicketModel.comments),
+            selectinload(ComplaintTicketModel.creator).selectinload(UserModel.credentials),
+            selectinload(ComplaintTicketModel.unit)
+                .selectinload(UnitModel.floor)
+                .selectinload(FloorModel.building),
+        ]
+
     async def create_ticket(self, ticket: ComplaintTicketModel) -> ComplaintTicketModel:
         self.db.add(ticket)
         await self.db.flush()
@@ -31,7 +48,7 @@ class ComplaintRepository:
         query = (
             select(ComplaintTicketModel)
             .where(ComplaintTicketModel.id == ticket_id)
-            .options(selectinload(ComplaintTicketModel.comments))
+            .options(*self._eager_load_options())
         )
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
@@ -40,7 +57,7 @@ class ComplaintRepository:
         query = (
             select(ComplaintTicketModel)
             .where(ComplaintTicketModel.ticket_number == ticket_number)
-            .options(selectinload(ComplaintTicketModel.comments))
+            .options(*self._eager_load_options())
         )
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
@@ -62,7 +79,7 @@ class ComplaintRepository:
         query = (
             select(ComplaintTicketModel)
             .where(ComplaintTicketModel.society_id == society_id)
-            .options(selectinload(ComplaintTicketModel.comments))
+            .options(*self._eager_load_options())
             .order_by(ComplaintTicketModel.created_at.desc())
         )
 
@@ -92,7 +109,7 @@ class ComplaintRepository:
                 ComplaintTicketModel.society_id == society_id,
                 ComplaintTicketModel.created_by_user_id == user_id,
             )
-            .options(selectinload(ComplaintTicketModel.comments))
+            .options(*self._eager_load_options())
             .order_by(ComplaintTicketModel.created_at.desc())
         )
 
@@ -101,6 +118,43 @@ class ComplaintRepository:
 
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def get_user_unit_in_society(
+        self, society_id: uuid.UUID, user_id: uuid.UUID
+    ) -> Optional[UnitModel]:
+        """Looks up the assigned flat unit for a user in the given society."""
+        query_role = (
+            select(UnitModel)
+            .options(
+                selectinload(UnitModel.floor).selectinload(FloorModel.building)
+            )
+            .join(UserSocietyRoleModel, UserSocietyRoleModel.unit_id == UnitModel.id)
+            .where(
+                UserSocietyRoleModel.user_id == user_id,
+                UserSocietyRoleModel.society_id == society_id,
+                UserSocietyRoleModel.unit_id.is_not(None),
+            )
+        )
+        res = await self.db.execute(query_role)
+        unit = res.scalars().first()
+        if unit:
+            return unit
+
+        query_res = (
+            select(UnitModel)
+            .options(
+                selectinload(UnitModel.floor).selectinload(FloorModel.building)
+            )
+            .join(UnitResidentModel, UnitResidentModel.unit_id == UnitModel.id)
+            .join(FloorModel, UnitModel.floor_id == FloorModel.id)
+            .join(BuildingModel, FloorModel.building_id == BuildingModel.id)
+            .where(
+                UnitResidentModel.user_id == user_id,
+                BuildingModel.society_id == society_id,
+            )
+        )
+        res2 = await self.db.execute(query_res)
+        return res2.scalars().first()
 
     async def create_comment(self, comment: ComplaintCommentModel) -> ComplaintCommentModel:
         self.db.add(comment)

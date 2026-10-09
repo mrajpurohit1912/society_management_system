@@ -26,6 +26,10 @@ import {
   User,
   CheckSquare,
   Eye,
+  Home,
+  Phone,
+  Mail,
+  Search,
 } from 'lucide-react';
 
 interface ComplaintMetrics {
@@ -56,6 +60,29 @@ interface ComplaintTicket {
   assigned_vendor_name?: string;
   resolution_notes?: string;
   created_at: string;
+  creator_name?: string;
+  creator_email?: string;
+  creator_phone?: string;
+  unit_number?: string;
+  building_name?: string;
+  floor_number?: number;
+}
+
+function formatDateTime(dateStr?: string | null): string {
+  if (!dateStr) return 'N/A';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
 export default function AdminComplaintsPage() {
@@ -65,6 +92,7 @@ export default function AdminComplaintsPage() {
   const [metrics, setMetrics] = useState<ComplaintMetrics | null>(null);
   const [tickets, setTickets] = useState<ComplaintTicket[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -159,8 +187,20 @@ export default function AdminComplaintsPage() {
   };
 
   const filteredTickets = tickets.filter((t) => {
-    if (statusFilter === 'all') return true;
-    return t.status.toLowerCase() === statusFilter;
+    const matchesStatus = statusFilter === 'all' || t.status.toLowerCase() === statusFilter;
+    if (!matchesStatus) return false;
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      t.ticket_number.toLowerCase().includes(q) ||
+      t.title.toLowerCase().includes(q) ||
+      t.description.toLowerCase().includes(q) ||
+      (t.creator_name && t.creator_name.toLowerCase().includes(q)) ||
+      (t.unit_number && t.unit_number.toLowerCase().includes(q)) ||
+      (t.building_name && t.building_name.toLowerCase().includes(q)) ||
+      (t.creator_phone && t.creator_phone.toLowerCase().includes(q)) ||
+      (t.creator_email && t.creator_email.toLowerCase().includes(q))
+    );
   });
 
   const getPriorityBadge = (p: string) => {
@@ -256,21 +296,33 @@ export default function AdminComplaintsPage() {
         </Card>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-zinc-200 dark:border-zinc-800">
-        {['all', 'open', 'in_progress', 'resolved'].map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
-              statusFilter === s
-                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                : 'text-zinc-500 hover:text-zinc-900'
-            }`}
-          >
-            {s.replace(/_/g, ' ')}
-          </button>
-        ))}
+      {/* Filter Tabs & Search Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-1 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {['all', 'open', 'in_progress', 'resolved'].map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors shrink-0 ${
+                statusFilter === s
+                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                  : 'text-zinc-500 hover:text-zinc-900'
+              }`}
+            >
+              {s.replace(/_/g, ' ')}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-400" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search resident, flat, ticket #..."
+            className="h-8 pl-8 text-xs bg-white dark:bg-zinc-900"
+          />
+        </div>
       </div>
 
       {/* Resolve Modal / Inline Form */}
@@ -415,6 +467,49 @@ export default function AdminComplaintsPage() {
                       </div>
                     </div>
 
+                    {/* Resident & Flat Identification Banner */}
+                    <div className="flex flex-wrap items-center gap-2 p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-xs">
+                      <div className="flex items-center gap-1.5 font-semibold text-zinc-900 dark:text-zinc-100">
+                        <User className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <span>{ticket.creator_name || 'Resident Member'}</span>
+                      </div>
+
+                      {(ticket.unit_number || ticket.building_name) ? (
+                        <div className="flex items-center gap-1 text-zinc-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 font-medium text-[11px]">
+                          <Home className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>
+                            {ticket.building_name ? `${ticket.building_name} • ` : ''}Flat {ticket.unit_number || 'N/A'}
+                            {ticket.floor_number !== undefined && ticket.floor_number !== null ? ` (Fl ${ticket.floor_number})` : ''}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-zinc-500 bg-white dark:bg-zinc-800 px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 font-medium text-[11px]">
+                          <Home className="h-3 w-3 text-zinc-400 shrink-0" />
+                          <span>Common Area</span>
+                        </div>
+                      )}
+
+                      {ticket.creator_phone && (
+                        <a
+                          href={`tel:${ticket.creator_phone}`}
+                          className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 text-[11px] font-medium"
+                        >
+                          <Phone className="h-3 w-3 text-zinc-400 shrink-0" />
+                          <span>{ticket.creator_phone}</span>
+                        </a>
+                      )}
+
+                      {ticket.creator_email && (
+                        <a
+                          href={`mailto:${ticket.creator_email}`}
+                          className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 text-[11px]"
+                        >
+                          <Mail className="h-3 w-3 text-zinc-400 shrink-0" />
+                          <span>{ticket.creator_email}</span>
+                        </a>
+                      )}
+                    </div>
+
                     <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
                       {ticket.description}
                     </p>
@@ -436,12 +531,7 @@ export default function AdminComplaintsPage() {
                       )}
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        SLA Due: {new Date(ticket.sla_deadline).toLocaleTimeString(undefined, {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          day: 'numeric',
-                          month: 'short',
-                        })}
+                        SLA Due: {formatDateTime(ticket.sla_deadline)}
                       </span>
                     </div>
                   </div>
@@ -473,11 +563,60 @@ export default function AdminComplaintsPage() {
                 {viewingTicket.title}
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Raised on {new Date(viewingTicket.created_at).toLocaleString()}
+                Raised on {formatDateTime(viewingTicket.created_at)}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-3 py-2 text-sm">
+              {/* Resident & Flat Identification Card */}
+              <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 space-y-2">
+                <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider block">
+                  Resident & Flat Identification
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                  <div>
+                    <span className="text-zinc-500 block text-[11px]">Raised By (Resident)</span>
+                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 mt-0.5">
+                      <User className="h-3.5 w-3.5 text-indigo-600" />
+                      {viewingTicket.creator_name || 'Resident Member'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[11px]">Flat & Wing</span>
+                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 mt-0.5">
+                      <Home className="h-3.5 w-3.5 text-emerald-600" />
+                      {viewingTicket.unit_number
+                        ? `${viewingTicket.building_name ? `${viewingTicket.building_name} • ` : ''}Flat ${viewingTicket.unit_number}${viewingTicket.floor_number !== undefined && viewingTicket.floor_number !== null ? ` (Floor ${viewingTicket.floor_number})` : ''}`
+                        : 'Common Area / Unassigned'}
+                    </span>
+                  </div>
+                  {viewingTicket.creator_phone && (
+                    <div>
+                      <span className="text-zinc-500 block text-[11px]">Contact Phone</span>
+                      <a
+                        href={`tel:${viewingTicket.creator_phone}`}
+                        className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 mt-0.5"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                        {viewingTicket.creator_phone}
+                      </a>
+                    </div>
+                  )}
+                  {viewingTicket.creator_email && (
+                    <div>
+                      <span className="text-zinc-500 block text-[11px]">Email Address</span>
+                      <a
+                        href={`mailto:${viewingTicket.creator_email}`}
+                        className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 mt-0.5"
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                        {viewingTicket.creator_email}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
                 <div>
                   <span className="text-xs text-zinc-500 block">Category</span>
@@ -521,7 +660,7 @@ export default function AdminComplaintsPage() {
                 <div>
                   <span className="text-zinc-400 block">SLA Due By</span>
                   <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                    {new Date(viewingTicket.sla_deadline).toLocaleString()}
+                    {formatDateTime(viewingTicket.sla_deadline)}
                   </span>
                 </div>
               </div>
