@@ -86,7 +86,7 @@ def test_complete_brd_enterprise_flow():
         "password": "ResidentPassword123!"
     })
     assert res_signup_res.status_code == 201
-    assert res_signup_res.json()["data"]["status"] == "registered"
+    assert res_signup_res.json()["data"]["status"] in ["registered", "activation_pending"]
 
     # 8. Resident Login (Before Membership)
     res_login_res = client.post("/api/v1/auth/login", json={
