@@ -19,24 +19,39 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.drop_column('buildings', 'address')
-    op.drop_column('buildings', 'city')
-    op.drop_column('buildings', 'state')
-    op.drop_column('buildings', 'country')
-    op.drop_column('buildings', 'zipcode')
-    op.drop_column('buildings', 'email')
-    op.drop_column('buildings', 'phone')
-    op.drop_column('buildings', 'status')
+    """Upgrade schema safely using inspector."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
+    if 'buildings' in existing_tables:
+        building_cols = {c['name'] for c in inspector.get_columns('buildings')}
+        for col in ['address', 'city', 'state', 'country', 'zipcode', 'email', 'phone', 'status']:
+            if col in building_cols:
+                op.drop_column('buildings', col)
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
-    op.add_column('buildings', sa.Column('status', sa.String(length=20), nullable=False, server_default='active'))
-    op.add_column('buildings', sa.Column('phone', sa.String(length=20), nullable=True))
-    op.add_column('buildings', sa.Column('email', sa.String(length=100), nullable=True))
-    op.add_column('buildings', sa.Column('zipcode', sa.String(length=20), nullable=True))
-    op.add_column('buildings', sa.Column('country', sa.String(length=100), nullable=True))
-    op.add_column('buildings', sa.Column('state', sa.String(length=100), nullable=True))
-    op.add_column('buildings', sa.Column('city', sa.String(length=100), nullable=True))
-    op.add_column('buildings', sa.Column('address', sa.String(length=255), nullable=True))
+    """Downgrade schema safely using inspector."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
+    if 'buildings' in existing_tables:
+        building_cols = {c['name'] for c in inspector.get_columns('buildings')}
+        if 'status' not in building_cols:
+            op.add_column('buildings', sa.Column('status', sa.String(length=20), nullable=False, server_default='active'))
+        if 'phone' not in building_cols:
+            op.add_column('buildings', sa.Column('phone', sa.String(length=20), nullable=True))
+        if 'email' not in building_cols:
+            op.add_column('buildings', sa.Column('email', sa.String(length=100), nullable=True))
+        if 'zipcode' not in building_cols:
+            op.add_column('buildings', sa.Column('zipcode', sa.String(length=20), nullable=True))
+        if 'country' not in building_cols:
+            op.add_column('buildings', sa.Column('country', sa.String(length=100), nullable=True))
+        if 'state' not in building_cols:
+            op.add_column('buildings', sa.Column('state', sa.String(length=100), nullable=True))
+        if 'city' not in building_cols:
+            op.add_column('buildings', sa.Column('city', sa.String(length=100), nullable=True))
+        if 'address' not in building_cols:
+            op.add_column('buildings', sa.Column('address', sa.String(length=255), nullable=True))

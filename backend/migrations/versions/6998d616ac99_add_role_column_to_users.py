@@ -19,13 +19,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.add_column(
-        'users',
-        sa.Column('role', sa.String(length=20), nullable=False, server_default='member')
-    )
+    """Upgrade schema safely using inspector."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
+    if 'users' in existing_tables:
+        user_cols = {c['name'] for c in inspector.get_columns('users')}
+        if 'role' not in user_cols:
+            op.add_column(
+                'users',
+                sa.Column('role', sa.String(length=20), nullable=False, server_default='member')
+            )
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
-    op.drop_column('users', 'role')
+    """Downgrade schema safely using inspector."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
+    if 'users' in existing_tables:
+        user_cols = {c['name'] for c in inspector.get_columns('users')}
+        if 'role' in user_cols:
+            op.drop_column('users', 'role')
