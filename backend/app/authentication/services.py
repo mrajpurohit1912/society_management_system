@@ -172,14 +172,17 @@ class AuthFlowService:
         society_repo = SocietyRepository(db)
 
         cred = await user_repo.get_credential_by_identifier("email", payload.email)
-        if not cred or not cred.password_hash:
-            raise ValueError("Invalid email or password")
-
-        if not PasswordHasher.verify_password(payload.password, cred.password_hash):
+        if not cred:
             raise ValueError("Invalid email or password")
 
         user = await user_repo.get_user_by_id(cred.user_id)
         if not user:
+            raise ValueError("Invalid email or password")
+
+        if user.status == UserAccountStatus.ACTIVATION_PENDING.value and not cred.password_hash:
+            raise ValueError("Your account has not been activated yet. Please set your password using the activation link or contact platform support.")
+
+        if not cred.password_hash or not PasswordHasher.verify_password(payload.password, cred.password_hash):
             raise ValueError("Invalid email or password")
 
         if user.status == UserAccountStatus.SUSPENDED.value:

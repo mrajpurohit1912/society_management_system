@@ -130,6 +130,45 @@ async def update_platform_lead_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
+@router.get("/platform/leads/{lead_id}/activation")
+async def get_platform_lead_activation_details(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Platform Admin Endpoint: Retrieve activation token & link for a provisioned society lead.
+    """
+    try:
+        async with db.begin():
+            res = await PlatformAdminService.get_admin_activation_token(db, lead_id)
+        return {
+            "success": True,
+            "data": res
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/platform/leads/{lead_id}/resend-activation")
+async def resend_platform_lead_activation_email(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Platform Admin Endpoint: Re-dispatch activation email and return token & URL for a provisioned society lead.
+    """
+    try:
+        async with db.begin():
+            res = await PlatformAdminService.resend_admin_activation(db, lead_id)
+        return {
+            "success": True,
+            "message": "Activation email re-dispatched and link retrieved successfully.",
+            "data": res
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 @router.post("/platform/societies", status_code=status.HTTP_201_CREATED)
 async def platform_create_society(
     payload: PlatformCreateSocietyRequest,

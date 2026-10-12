@@ -187,6 +187,24 @@ class UserRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_latest_valid_token_for_user(
+        self, user_id: uuid.UUID, token_type: str
+    ) -> Optional[ActivationTokenModel]:
+        """Fetch the most recent unconsumed and unexpired token for a user."""
+        now = datetime.now(timezone.utc)
+        query = (
+            select(ActivationTokenModel)
+            .where(
+                ActivationTokenModel.user_id == user_id,
+                ActivationTokenModel.type == token_type,
+                ActivationTokenModel.used_at.is_(None),
+                ActivationTokenModel.expires_at > now,
+            )
+            .order_by(ActivationTokenModel.created_at.desc())
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
     async def mark_token_used(self, token_record: ActivationTokenModel) -> None:
         """Mark an activation token as consumed."""
         token_record.used_at = datetime.now(timezone.utc)

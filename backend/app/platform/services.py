@@ -19,6 +19,7 @@ from app.authentication.models import (
     TokenType,
 )
 from app.core.email_service import EmailService
+from app.core.config import settings
 from app.platform.schemas import (
     RegisterSocietyLeadRequest,
     UpdateSocietyLeadStatusRequest,
@@ -276,6 +277,76 @@ class PlatformAdminService:
         )
         return society, subscription, admin_res
 
+    async def get_or_create_admin_activation_token(
+        self, lead_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        lead = await self.get_lead(lead_id)
+        if not lead:
+            raise ValueError(f"Lead ID '{lead_id}' not found")
+
+        cred = await self.user_repo.get_credential_by_identifier("email", lead.email)
+        if not cred:
+            raise ValueError(f"No user account found for lead email '{lead.email}'")
+
+        user = await self.user_repo.get_user_by_id(cred.user_id)
+        if not user:
+            raise ValueError(f"User profile not found for user ID '{cred.user_id}'")
+
+        is_activated = bool(user.status == UserAccountStatus.ACTIVE.value and cred.password_hash)
+
+        token_record = await self.user_repo.get_latest_valid_token_for_user(
+            user.user_id, TokenType.ADMIN_ACTIVATION.value
+        )
+        if token_record:
+            raw_token = token_record.token
+            expires_at = token_record.expires_at
+        else:
+            raw_token = secrets.token_urlsafe(32)
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+            await self.user_repo.create_activation_token(
+                user_id=user.user_id,
+                token=raw_token,
+                token_type=TokenType.ADMIN_ACTIVATION.value,
+                expires_at=expires_at,
+            )
+
+        app_base = settings.APP_BASE_URL.rstrip("/")
+        activation_url = f"{app_base}/activate?token={raw_token}"
+
+        return {
+            "lead_id": str(lead.id),
+            "society_name": lead.organization_name,
+            "admin_name": f"{user.first_name} {user.last_name}",
+            "admin_email": lead.email,
+            "is_activated": is_activated,
+            "user_status": user.status,
+            "activation_token": raw_token,
+            "activation_url": activation_url,
+            "expires_at": expires_at.isoformat() if hasattr(expires_at, "isoformat") else str(expires_at),
+        }
+
+    async def resend_admin_activation_email(
+        self, lead_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        info = await self.get_or_create_admin_activation_token(lead_id)
+        if info["is_activated"]:
+            raise ValueError("This account has already been activated and has a password set.")
+
+        try:
+            EmailService.send_admin_activation_email(
+                to_email=info["admin_email"],
+                name=info["admin_name"],
+                society_name=info["society_name"],
+                token=info["activation_token"],
+            )
+            email_sent = True
+        except Exception as e:
+            logger.warning("platform.resend_activation_email_failed", error=str(e))
+            email_sent = False
+
+        info["email_sent"] = email_sent
+        return info
+
     # ---------------------------------------------------------
     # Backward-Compatible Classmethods
     # ---------------------------------------------------------
@@ -330,3 +401,15 @@ class PlatformAdminService:
         cls, db: AsyncSession, payload: PlatformCreateAdminRequest
     ) -> Dict[str, Any]:
         return await cls(db).provision_primary_admin(payload)
+
+    @classmethod
+    async def get_admin_activation_token(
+        cls, db: AsyncSession, lead_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        return await cls(db).get_or_create_admin_activation_token(lead_id)
+
+    @classmethod
+    async def resend_admin_activation(
+        cls, db: AsyncSession, lead_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        return await cls(db).resend_admin_activation_email(lead_id)
