@@ -16,7 +16,11 @@ import {
   Loader2,
   ShieldCheck,
   PlusCircle,
+  MapPin,
+  Mail,
+  Phone,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface SocietyDetail {
   id: string;
@@ -24,6 +28,12 @@ interface SocietyDetail {
   city: string;
   state: string;
   registration_no?: string;
+  address?: string;
+  country?: string;
+  zipcode?: string;
+  email?: string;
+  phone?: string;
+  status?: string;
 }
 
 export default function AdminDashboardPage() {
@@ -89,9 +99,9 @@ export default function AdminDashboardPage() {
   }, [societyId]);
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
             {society?.name || 'Society Admin Console'}
@@ -121,6 +131,86 @@ export default function AdminDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Society Details & Information Overview Card */}
+      <Card className="border border-zinc-200 dark:border-zinc-800 bg-gradient-to-br from-indigo-50/40 via-white to-zinc-50/50 dark:from-zinc-950 dark:via-zinc-900/40 dark:to-zinc-950 shadow-sm overflow-hidden">
+        <div className="p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white font-bold text-lg shadow-sm shrink-0">
+              <Building2 className="h-6 w-6" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">
+                  {society?.name || 'Society Admin Console'}
+                </h2>
+                {society?.registration_no && (
+                  <Badge variant="outline" className="font-mono text-[11px] border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">
+                    REG: {society.registration_no}
+                  </Badge>
+                )}
+                <Badge className="bg-emerald-600 text-white text-[10px]">
+                  {society?.status ? society.status.toUpperCase() : 'ACTIVE'}
+                </Badge>
+              </div>
+
+              <div className="flex items-center gap-4 text-xs text-zinc-500 flex-wrap pt-0.5">
+                {society?.address && (
+                  <span className="flex items-center gap-1 text-zinc-700 dark:text-zinc-300">
+                    <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                    <span>
+                      {society.address}, {society.city}, {society.state} {society.zipcode ? `- ${society.zipcode}` : ''}
+                    </span>
+                  </span>
+                )}
+                {society?.email && (
+                  <a
+                    href={`mailto:${society.email}`}
+                    className="flex items-center gap-1 hover:text-indigo-600 text-zinc-600 dark:text-zinc-400"
+                  >
+                    <Mail className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                    <span>{society.email}</span>
+                  </a>
+                )}
+                {society?.phone && (
+                  <a
+                    href={`tel:${society.phone}`}
+                    className="flex items-center gap-1 hover:text-indigo-600 text-zinc-600 dark:text-zinc-400"
+                  >
+                    <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                    <span>{society.phone}</span>
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 border-t lg:border-t-0 pt-3 lg:pt-0 lg:pl-4 border-zinc-200 dark:border-zinc-800 shrink-0">
+            <Link
+              href="/admin/units"
+              className={buttonVariants({
+                variant: 'outline',
+                size: 'sm',
+                className: 'h-8 text-xs flex items-center gap-1.5',
+              })}
+            >
+              <Building2 className="h-3.5 w-3.5 text-indigo-600" />
+              <span>Buildings & Units</span>
+            </Link>
+            <Link
+              href="/admin/residents"
+              className={buttonVariants({
+                variant: 'outline',
+                size: 'sm',
+                className: 'h-8 text-xs flex items-center gap-1.5',
+              })}
+            >
+              <Users className="h-3.5 w-3.5 text-indigo-600" />
+              <span>Residents Directory</span>
+            </Link>
+          </div>
+        </div>
+      </Card>
 
       {/* KPI Cards */}
       {loading ? (

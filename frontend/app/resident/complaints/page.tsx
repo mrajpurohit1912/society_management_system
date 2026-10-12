@@ -25,10 +25,16 @@ import {
   Clock,
   Star,
   Eye,
+  User,
+  Users,
+  ShieldCheck,
+  Home,
 } from 'lucide-react';
 
 interface Complaint {
   id: string;
+  society_id?: string;
+  created_by_user_id?: string;
   ticket_number: string;
   title: string;
   description: string;
@@ -42,6 +48,9 @@ interface Complaint {
   resident_rating?: number;
   resident_feedback?: string;
   created_at: string;
+  creator_name?: string;
+  creator_email?: string;
+  creator_phone?: string;
   unit_number?: string;
   building_name?: string;
   floor_number?: number;
@@ -68,7 +77,9 @@ export default function ResidentComplaintsPage() {
   const user = useAuthStore((state) => state.user);
   const societyId = user?.active_society_id;
 
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [allComplaints, setAllComplaints] = useState<Complaint[]>([]);
+  const [myComplaints, setMyComplaints] = useState<Complaint[]>([]);
+  const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [closeLoading, setCloseLoading] = useState<string | null>(null);
@@ -88,16 +99,36 @@ export default function ResidentComplaintsPage() {
   const [rating, setRating] = useState(5);
   const [feedbackText, setFeedbackText] = useState('');
 
-  const fetchMyComplaints = useCallback(async () => {
+  const fetchComplaints = useCallback(async () => {
     if (!societyId) {
       setLoading(false);
       return;
     }
 
     try {
-      const res = await apiClient.get(`/societies/${societyId}/complaints/my`);
-      const list = res.data?.data || res.data || [];
-      setComplaints(Array.isArray(list) ? list : []);
+      const [allRes, myRes] = await Promise.allSettled([
+        apiClient.get(`/societies/${societyId}/complaints`),
+        apiClient.get(`/societies/${societyId}/complaints/my`),
+      ]);
+
+      let allList: Complaint[] = [];
+      let myList: Complaint[] = [];
+
+      if (allRes.status === 'fulfilled') {
+        const raw = allRes.value.data?.data || allRes.value.data || [];
+        allList = Array.isArray(raw) ? raw : [];
+      }
+      if (myRes.status === 'fulfilled') {
+        const raw = myRes.value.data?.data || myRes.value.data || [];
+        myList = Array.isArray(raw) ? raw : [];
+      }
+
+      setAllComplaints(allList);
+      setMyComplaints(
+        myList.length > 0
+          ? myList
+          : allList.filter((c) => c.created_by_user_id === user?.user_id)
+      );
     } catch (err: unknown) {
       if (err instanceof Error) {
         setFeedback({ type: 'error', message: err.message });
@@ -105,11 +136,11 @@ export default function ResidentComplaintsPage() {
     } finally {
       setLoading(false);
     }
-  }, [societyId]);
+  }, [societyId, user?.user_id]);
 
   useEffect(() => {
-    fetchMyComplaints();
-  }, [fetchMyComplaints]);
+    fetchComplaints();
+  }, [fetchComplaints]);
 
   // Create Complaint
   const handleCreateComplaint = async (e: React.FormEvent) => {
@@ -135,7 +166,7 @@ export default function ResidentComplaintsPage() {
       setTitle('');
       setDescription('');
       setShowForm(false);
-      await fetchMyComplaints();
+      await fetchComplaints();
     } catch (err: unknown) {
       if (err instanceof Error) {
         setFeedback({ type: 'error', message: err.message });
@@ -164,7 +195,7 @@ export default function ResidentComplaintsPage() {
       setFeedback({ type: 'success', message: 'Thank you! Your feedback has been recorded and ticket closed.' });
       setRatingTicketId(null);
       setFeedbackText('');
-      await fetchMyComplaints();
+      await fetchComplaints();
     } catch (err: unknown) {
       if (err instanceof Error) {
         setFeedback({ type: 'error', message: err.message });
@@ -436,12 +467,43 @@ export default function ResidentComplaintsPage() {
         </Card>
       )}
 
+      {/* Scope Filter Tabs */}
+      <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2">
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+            activeTab === 'all'
+              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+              : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'
+          }`}
+        >
+          <Users className="h-3.5 w-3.5" />
+          <span>All Community Complaints ({allComplaints.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('my')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+            activeTab === 'my'
+              ? 'bg-indigo-600 text-white'
+              : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'
+          }`}
+        >
+          <User className="h-3.5 w-3.5" />
+          <span>My Tickets ({myComplaints.length})</span>
+        </button>
+      </div>
+
       {/* Complaints List */}
       <Card className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
         <CardHeader className="py-4">
-          <CardTitle className="text-base font-semibold">My Maintenance Requests</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            {activeTab === 'all' ? 'All Society Complaints' : 'My Maintenance Requests'}
+          </CardTitle>
           <CardDescription>
-            {complaints.length} ticket{complaints.length === 1 ? '' : 's'} registered under your profile
+            {activeTab === 'all'
+              ? `Showing ${allComplaints.length} tickets across society. Community issues are visible for transparency.`
+              : `${myComplaints.length} tickets registered under your profile.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -449,14 +511,14 @@ export default function ResidentComplaintsPage() {
             <div className="flex justify-center py-16">
               <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
             </div>
-          ) : complaints.length === 0 ? (
+          ) : (activeTab === 'all' ? allComplaints : myComplaints).length === 0 ? (
             <div className="text-center py-16 border border-dashed rounded-xl border-zinc-200 dark:border-zinc-800 space-y-2">
               <CheckCircle className="h-10 w-10 text-emerald-500 mx-auto" />
               <p className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">
-                No tickets reported
+                {activeTab === 'all' ? 'No society tickets found' : 'No tickets reported by you'}
               </p>
               <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                Need help with plumbing, electrical, or society repairs? Open a ticket anytime.
+                Need help with plumbing, electrical, elevator, or society repairs? Open a ticket anytime.
               </p>
               <Button
                 size="sm"
@@ -468,10 +530,11 @@ export default function ResidentComplaintsPage() {
             </div>
           ) : (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {complaints.map((ticket) => {
+              {(activeTab === 'all' ? allComplaints : myComplaints).map((ticket) => {
+                const isMyTicket = ticket.created_by_user_id === user?.user_id;
                 const isResolved = ticket.status.toLowerCase() === 'resolved';
                 return (
-                  <div key={ticket.id} className="py-4 space-y-2">
+                  <div key={ticket.id} className="py-4 space-y-2.5">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono text-xs font-bold text-zinc-500">
@@ -482,10 +545,14 @@ export default function ResidentComplaintsPage() {
                         </h2>
                         {getPriorityBadge(ticket.priority)}
                         {getStatusBadge(ticket.status)}
-                        {ticket.unit_number && (
-                          <span className="text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-900">
-                            {ticket.building_name ? `${ticket.building_name} • ` : ''}Flat {ticket.unit_number}
-                          </span>
+                        {isMyTicket ? (
+                          <Badge className="bg-indigo-600 text-white text-[10px] font-semibold">
+                            My Ticket
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-[10px] bg-zinc-50 dark:bg-zinc-900">
+                            Community Issue • Read-Only
+                          </Badge>
                         )}
                       </div>
 
@@ -500,7 +567,7 @@ export default function ResidentComplaintsPage() {
                           <span>View</span>
                         </Button>
 
-                        {isResolved && (
+                        {isMyTicket && isResolved && (
                           <Button
                             size="sm"
                             onClick={() => setRatingTicketId(ticket.id)}
@@ -510,7 +577,27 @@ export default function ResidentComplaintsPage() {
                             <span>Verify & Close</span>
                           </Button>
                         )}
+
+                        {!isMyTicket && (
+                          <span className="text-[11px] text-zinc-400 italic font-medium px-2 py-0.5 rounded bg-zinc-50 dark:bg-zinc-900">
+                            Read-Only
+                          </span>
+                        )}
                       </div>
+                    </div>
+
+                    {/* Origin / Reporter Identification Box */}
+                    <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/60 p-2 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                      <Home className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        {ticket.unit_number
+                          ? `${ticket.building_name ? `${ticket.building_name} • ` : ''}Flat ${ticket.unit_number}`
+                          : 'Common Area'}
+                      </span>
+                      <span>•</span>
+                      <span>
+                        {isMyTicket ? 'Reported by you' : `Reported by ${ticket.creator_name || 'Neighbor'}`}
+                      </span>
                     </div>
 
                     <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
@@ -524,7 +611,21 @@ export default function ResidentComplaintsPage() {
                       </div>
                     )}
 
-                    <div className="flex items-center gap-3 text-[11px] text-zinc-400 pt-1 flex-wrap">
+                    {((ticket.resident_rating !== undefined && ticket.resident_rating !== null) || ticket.resident_feedback) && (
+                      <div className="p-2.5 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 text-xs space-y-0.5">
+                        <div className="flex items-center gap-1 text-amber-800 dark:text-amber-300 font-semibold text-[11px]">
+                          <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                          <span>Resolution Rating: {ticket.resident_rating} / 5 Stars</span>
+                        </div>
+                        {ticket.resident_feedback && (
+                          <p className="text-zinc-600 dark:text-zinc-400 italic text-[11px] pl-4">
+                            "{ticket.resident_feedback}"
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 text-[11px] text-zinc-400 pt-0.5 flex-wrap">
                       <span className="capitalize">{ticket.category}</span>
                       <span>• {ticket.scope.replace(/_/g, ' ')}</span>
                       <span className="flex items-center gap-1">
@@ -550,6 +651,13 @@ export default function ResidentComplaintsPage() {
               </span>
               {viewingTicket && getPriorityBadge(viewingTicket.priority)}
               {viewingTicket && getStatusBadge(viewingTicket.status)}
+              {viewingTicket && (
+                viewingTicket.created_by_user_id === user?.user_id ? (
+                  <Badge className="bg-indigo-600 text-white text-[10px]">My Ticket</Badge>
+                ) : (
+                  <Badge variant="outline" className="border-zinc-300 text-zinc-500 text-[10px]">Community Ticket (Read-Only)</Badge>
+                )
+              )}
             </div>
             <DialogTitle className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
               {viewingTicket?.title}
@@ -561,6 +669,20 @@ export default function ResidentComplaintsPage() {
 
           {viewingTicket && (
             <div className="space-y-4 py-2 text-sm">
+              {/* Community Read-Only Warning if not author */}
+              {viewingTicket.created_by_user_id !== user?.user_id && (
+                <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-zinc-800 dark:text-zinc-200">
+                    <ShieldCheck className="h-4 w-4 text-indigo-600" />
+                    <span>Community Transparency Ticket</span>
+                  </div>
+                  <p className="leading-relaxed">
+                    This maintenance ticket was reported by a fellow resident ({viewingTicket.unit_number ? `Flat ${viewingTicket.unit_number}` : (viewingTicket.creator_name || 'Neighbor')}).
+                    You have read-only visibility into its progress and SLA status. Only the ticket reporter or society administration can add remarks or verify resolution.
+                  </p>
+                </div>
+              )}
+
               <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 space-y-1">
                 <span className="text-xs text-zinc-500 font-medium">Issue Description</span>
                 <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
@@ -607,8 +729,15 @@ export default function ResidentComplaintsPage() {
 
               {viewingTicket.resident_rating && (
                 <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs">
-                  <span className="text-zinc-500">Your Rating</span>
+                  <span className="text-zinc-500">Resident Rating</span>
                   <span className="font-bold text-amber-500">★ {viewingTicket.resident_rating} / 5</span>
+                </div>
+              )}
+
+              {viewingTicket.resident_feedback && (
+                <div className="p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs">
+                  <span className="text-zinc-500 block mb-1">Resident Remark</span>
+                  <p className="italic text-zinc-700 dark:text-zinc-300">"{viewingTicket.resident_feedback}"</p>
                 </div>
               )}
 
@@ -616,7 +745,7 @@ export default function ResidentComplaintsPage() {
                 <Button variant="outline" size="sm" onClick={() => setViewingTicket(null)}>
                   Close
                 </Button>
-                {viewingTicket.status.toLowerCase() === 'resolved' && (
+                {viewingTicket.created_by_user_id === user?.user_id && viewingTicket.status.toLowerCase() === 'resolved' && (
                   <Button
                     size="sm"
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5"

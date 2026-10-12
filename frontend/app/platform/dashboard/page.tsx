@@ -254,6 +254,9 @@ export default function PlatformDashboardPage() {
                 <p className="font-semibold text-zinc-900 dark:text-zinc-100">
                   Admin Email: {provisionResult.admin_email}
                 </p>
+                <p className="text-emerald-700 dark:text-emerald-400 font-medium text-xs mt-0.5">
+                  Initial Temporary Password: <span className="font-mono font-bold bg-white dark:bg-zinc-800 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">Admin@12345</span>
+                </p>
                 <p className="text-zinc-500 font-mono text-[11px] mt-0.5">
                   Society ID: {provisionResult.society_id}
                 </p>
@@ -574,7 +577,7 @@ export default function PlatformDashboardPage() {
                       {!activationDetails.is_activated ? (
                         <>
                           <p className="text-xs text-purple-900 dark:text-purple-200">
-                            The Society Admin (<span className="font-semibold">{activationDetails.admin_email}</span>) has not yet activated their password.
+                            The Society Admin (<span className="font-semibold">{activationDetails.admin_email}</span>) can log in directly at <span className="font-mono text-purple-950 dark:text-purple-100 font-semibold">/login</span> using default password <span className="font-mono font-bold bg-white dark:bg-zinc-800 px-1 py-0.5 rounded border border-purple-200 dark:border-purple-700">Admin@12345</span>, or set a custom password via activation link.
                           </p>
 
                           <div className="flex flex-wrap items-center gap-2 pt-1">

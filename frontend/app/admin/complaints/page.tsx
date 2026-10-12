@@ -30,6 +30,7 @@ import {
   Phone,
   Mail,
   Search,
+  Star,
 } from 'lucide-react';
 
 interface ComplaintMetrics {
@@ -41,6 +42,7 @@ interface ComplaintMetrics {
   closed_tickets: number;
   overdue_sla_tickets: number;
   average_rating?: number;
+  average_satisfaction_rating?: number;
 }
 
 interface ComplaintTicket {
@@ -59,6 +61,10 @@ interface ComplaintTicket {
   is_overdue: boolean;
   assigned_vendor_name?: string;
   resolution_notes?: string;
+  resolved_at?: string;
+  closed_at?: string;
+  resident_rating?: number;
+  resident_feedback?: string;
   created_at: string;
   creator_name?: string;
   creator_email?: string;
@@ -187,7 +193,10 @@ export default function AdminComplaintsPage() {
   };
 
   const filteredTickets = tickets.filter((t) => {
-    const matchesStatus = statusFilter === 'all' || t.status.toLowerCase() === statusFilter;
+    const isResolved = t.status.toLowerCase() === 'resolved' || t.status.toLowerCase() === 'closed';
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'resolved' ? isResolved : t.status.toLowerCase() === statusFilter);
     if (!matchesStatus) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
@@ -282,7 +291,9 @@ export default function AdminComplaintsPage() {
         </Card>
         <Card className="border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950">
           <p className="text-[11px] font-semibold text-zinc-500 uppercase">Resolved</p>
-          <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{metrics?.resolved_tickets || 0}</p>
+          <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+            {(metrics?.resolved_tickets ?? 0) + (metrics?.closed_tickets ?? 0)}
+          </p>
         </Card>
         <Card className="border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950">
           <p className="text-[11px] font-semibold text-zinc-500 uppercase">SLA Breaches</p>
@@ -291,7 +302,11 @@ export default function AdminComplaintsPage() {
         <Card className="border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950">
           <p className="text-[11px] font-semibold text-zinc-500 uppercase">Satisfaction</p>
           <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
-            {metrics?.average_rating ? `${metrics.average_rating.toFixed(1)} ★` : '5.0 ★'}
+            {metrics?.average_satisfaction_rating !== undefined && metrics.average_satisfaction_rating !== null
+              ? `${metrics.average_satisfaction_rating.toFixed(1)} ★`
+              : metrics?.average_rating !== undefined && metrics.average_rating !== null
+                ? `${metrics.average_rating.toFixed(1)} ★`
+                : '5.0 ★'}
           </p>
         </Card>
       </div>
@@ -521,6 +536,29 @@ export default function AdminComplaintsPage() {
                       </div>
                     )}
 
+                    {((ticket.resident_rating !== undefined && ticket.resident_rating !== null) || ticket.resident_feedback) && (
+                      <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-300">
+                          <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                          <span>
+                            Resident Rating & Feedback:{' '}
+                            {ticket.resident_rating ? `${ticket.resident_rating} / 5 Stars` : 'Feedback Provided'}
+                          </span>
+                        </div>
+                        {ticket.resident_feedback && (
+                          <div className="text-zinc-700 dark:text-zinc-300 pl-5">
+                            <span className="font-semibold text-zinc-900 dark:text-zinc-100">User Remark: </span>
+                            <span className="italic font-medium">"{ticket.resident_feedback}"</span>
+                          </div>
+                        )}
+                        {ticket.closed_at && (
+                          <div className="text-[10px] text-zinc-500 dark:text-zinc-400 pl-5">
+                            Verified & Closed on {formatDateTime(ticket.closed_at)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-4 text-[11px] text-zinc-400 flex-wrap pt-1">
                       <span className="capitalize">Category: {ticket.category}</span>
                       <span>• Scope: {ticket.scope.replace(/_/g, ' ')}</span>
@@ -646,6 +684,31 @@ export default function AdminComplaintsPage() {
                   </span>
                   <div className="p-2.5 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 text-xs text-emerald-900 dark:text-emerald-300">
                     {viewingTicket.resolution_notes}
+                  </div>
+                </div>
+              )}
+
+              {((viewingTicket.resident_rating !== undefined && viewingTicket.resident_rating !== null) || viewingTicket.resident_feedback) && (
+                <div>
+                  <span className="text-xs text-amber-700 dark:text-amber-400 block mb-1 font-semibold flex items-center gap-1">
+                    <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                    <span>Resident Feedback & Verification</span>
+                  </span>
+                  <div className="p-3 rounded-lg bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 text-xs space-y-1.5">
+                    <div className="flex items-center gap-1 text-amber-900 dark:text-amber-200 font-bold">
+                      <span>Rating: {viewingTicket.resident_rating} / 5 Stars</span>
+                    </div>
+                    {viewingTicket.resident_feedback && (
+                      <div>
+                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">User Remark: </span>
+                        <span className="text-zinc-700 dark:text-zinc-300 italic">"{viewingTicket.resident_feedback}"</span>
+                      </div>
+                    )}
+                    {viewingTicket.closed_at && (
+                      <p className="text-[10px] text-zinc-400">
+                        Verified & Closed on {formatDateTime(viewingTicket.closed_at)}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

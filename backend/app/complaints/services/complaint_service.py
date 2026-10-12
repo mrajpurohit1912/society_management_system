@@ -247,6 +247,7 @@ class ComplaintService(BaseComplaintService):
         society_id: uuid.UUID,
         ticket_id: uuid.UUID,
         payload: ComplaintCommentCreate,
+        is_admin: bool = False,
     ) -> ComplaintCommentModel:
         ticket = await self.complaint_repo.get_ticket_by_id(ticket_id)
         if not ticket or ticket.society_id != society_id:
@@ -255,11 +256,17 @@ class ComplaintService(BaseComplaintService):
                 detail="Complaint ticket not found.",
             )
 
+        if not is_admin and ticket.created_by_user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the resident who reported this issue or a society administrator can add remarks to this ticket.",
+            )
+
         comment = ComplaintCommentModel(
             ticket_id=ticket.id,
             user_id=user_id,
             comment=payload.comment,
-            is_internal=payload.is_internal,
+            is_internal=payload.is_internal if is_admin else False,
             attachment_url=payload.attachment_url,
         )
         return await self.complaint_repo.create_comment(comment)

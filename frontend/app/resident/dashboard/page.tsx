@@ -18,6 +18,11 @@ import {
   PlusCircle,
   Calendar,
   Eye,
+  User,
+  Home,
+  Building2,
+  MapPin,
+  Mail,
 } from 'lucide-react';
 
 interface Notice {
@@ -85,9 +90,9 @@ export default function ResidentDashboardPage() {
   }, [societyId]);
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto">
       {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
             Welcome home, {user?.first_name || 'Resident'}!
@@ -122,6 +127,70 @@ export default function ResidentDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Resident Profile & Residence Overview */}
+      <Card className="border border-indigo-100 dark:border-indigo-950/50 bg-gradient-to-br from-indigo-50/70 via-white to-zinc-50 dark:from-zinc-950 dark:via-zinc-900/60 dark:to-zinc-950 shadow-sm overflow-hidden">
+        <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white font-bold text-lg shadow-sm shrink-0">
+              {user?.first_name?.[0] || 'R'}{user?.last_name?.[0] || ''}
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-50">
+                  {user?.first_name} {user?.last_name}
+                </h2>
+                <Badge className="bg-emerald-600 text-white text-[10px] font-semibold">
+                  Active Resident
+                </Badge>
+              </div>
+              <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                  {user?.society_name || 'Gated Community Member'}
+                </span>
+                {user?.email && (
+                  <>
+                    <span>•</span>
+                    <span>{user.email}</span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 sm:gap-4 flex-wrap border-t md:border-t-0 md:border-l border-zinc-200 dark:border-zinc-800 pt-3 md:pt-0 md:pl-5">
+            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 min-w-[100px]">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Flat / Unit</span>
+              <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-0.5 block">
+                {user?.unit_number ? `Flat ${user.unit_number}` : 'Assigned Unit'}
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 min-w-[100px]">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Building / Wing</span>
+              <span className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mt-0.5 block truncate max-w-[120px]">
+                {user?.building_name || 'Main Block'}
+              </span>
+            </div>
+
+            {user?.floor_number !== undefined && user?.floor_number !== null && (
+              <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 min-w-[80px]">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Floor</span>
+                <span className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mt-0.5 block">
+                  {`Floor ${user.floor_number}`}
+                </span>
+              </div>
+            )}
+
+            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 min-w-[120px]">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Society</span>
+              <span className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mt-0.5 block truncate max-w-[140px]">
+                {user?.society_name || 'Residential Society'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Quick Action Tiles */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

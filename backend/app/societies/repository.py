@@ -315,6 +315,7 @@ class SocietyRepository:
         query = (
             select(UserSocietyRoleModel)
             .options(
+                selectinload(UserSocietyRoleModel.society),
                 selectinload(UserSocietyRoleModel.unit)
                     .selectinload(UnitModel.floor)
                     .selectinload(FloorModel.building),

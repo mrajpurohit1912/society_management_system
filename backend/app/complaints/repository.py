@@ -235,9 +235,10 @@ class ComplaintRepository:
             "open_tickets": status_counts[ComplaintStatus.OPEN.value],
             "assigned_tickets": status_counts[ComplaintStatus.ASSIGNED.value],
             "in_progress_tickets": status_counts[ComplaintStatus.IN_PROGRESS.value],
-            "resolved_tickets": status_counts[ComplaintStatus.RESOLVED.value],
+            "resolved_tickets": status_counts[ComplaintStatus.RESOLVED.value] + status_counts[ComplaintStatus.CLOSED.value],
             "closed_tickets": status_counts[ComplaintStatus.CLOSED.value],
             "overdue_sla_tickets": overdue_count,
             "average_rating": avg_rating,
+            "average_satisfaction_rating": avg_rating,
             "by_category": category_counts,
         }

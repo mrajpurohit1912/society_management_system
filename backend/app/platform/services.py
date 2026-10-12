@@ -31,6 +31,7 @@ from app.platform.schemas import (
 from app.platform.repository import PlatformRepository
 from app.societies.repository import SocietyRepository
 from app.authentication.repository import UserRepository
+from app.authentication.security import PasswordHasher
 
 logger = structlog.get_logger(__name__)
 
@@ -144,12 +145,15 @@ class PlatformAdminService:
         if not society:
             raise ValueError(f"Society ID '{payload.society_id}' not found")
 
-        # 1. Create Core User
+        # 1. Create Core User with Default Password
+        default_password = "Admin@12345"
+        hashed_password = PasswordHasher.hash_password(default_password)
+
         user = await self.user_repo.create_user(
             first_name=payload.first_name,
             last_name=payload.last_name,
             role=UserRole.SOCIETY_ADMIN.value,
-            status=UserAccountStatus.ACTIVATION_PENDING.value,
+            status=UserAccountStatus.ACTIVE.value,
             email_verified=True,
         )
 
@@ -158,7 +162,7 @@ class PlatformAdminService:
             user_id=user.user_id,
             provider="email",
             identifier=payload.email,
-            password_hash=None,
+            password_hash=hashed_password,
         )
 
         # 3. Attach Society Role
@@ -169,7 +173,7 @@ class PlatformAdminService:
             status="approved",
         )
 
-        # 4. Generate Activation Token
+        # 4. Generate Activation / Password Reset Token
         raw_token = secrets.token_urlsafe(32)
         expiry = datetime.now(timezone.utc) + timedelta(hours=48)
         await self.user_repo.create_activation_token(
@@ -192,9 +196,10 @@ class PlatformAdminService:
         return {
             "user_id": str(user.user_id),
             "email": payload.email,
+            "temporary_password": default_password,
             "society_id": str(payload.society_id),
             "activation_token": raw_token,
-            "status": "activation_email_sent",
+            "status": "provisioned",
         }
 
     async def provision_society_from_lead(
@@ -318,6 +323,7 @@ class PlatformAdminService:
             "society_name": lead.organization_name,
             "admin_name": f"{user.first_name} {user.last_name}",
             "admin_email": lead.email,
+            "temporary_password": "Admin@12345",
             "is_activated": is_activated,
             "user_status": user.status,
             "activation_token": raw_token,

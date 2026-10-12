@@ -44,17 +44,19 @@ function ResidentLayoutContent({ children }: { children: React.ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 flex-col border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
         {/* Brand */}
-        <div className="h-16 px-6 flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white">
-            <Home className="h-5 w-5" />
-          </div>
-          <div>
-            <span className="font-bold text-base block text-zinc-900 dark:text-zinc-100 leading-tight">
-              SocietySync
-            </span>
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
-              Resident App
-            </span>
+        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shrink-0">
+              <Home className="h-5 w-5" />
+            </div>
+            <div className="overflow-hidden">
+              <span className="font-bold text-sm block text-zinc-900 dark:text-zinc-100 leading-tight truncate">
+                {user?.society_name || 'SocietySync'}
+              </span>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+                Resident App
+              </span>
+            </div>
           </div>
         </div>
 
@@ -81,21 +83,37 @@ function ResidentLayoutContent({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* User Card & Logout */}
-        <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold text-xs">
+        <div className="p-3.5 border-t border-zinc-200 dark:border-zinc-800 space-y-2.5 bg-zinc-50/50 dark:bg-zinc-900/30">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold text-xs shrink-0">
               {user?.first_name?.[0] || 'R'}
               {user?.last_name?.[0] || ''}
             </div>
-            <div className="overflow-hidden">
-              <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+            <div className="overflow-hidden min-w-0">
+              <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
                 {user?.first_name} {user?.last_name}
               </p>
-              <div className="flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
-                <ShieldCheck className="h-3 w-3" />
-                <span>Verified Resident</span>
-              </div>
+              <p className="text-[11px] text-zinc-500 truncate font-medium">
+                {user?.unit_number ? `Flat ${user.unit_number}` : 'Resident'}{user?.building_name ? ` • ${user.building_name}` : ''}
+              </p>
             </div>
+          </div>
+
+          <div className="p-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-[11px] space-y-1">
+            <div className="flex items-center justify-between text-zinc-500">
+              <span>Society:</span>
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[120px]">
+                {user?.society_name || 'Gated Community'}
+              </span>
+            </div>
+            {user?.unit_number && (
+              <div className="flex items-center justify-between text-zinc-500">
+                <span>Residence:</span>
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                  {user.building_name ? `${user.building_name} - ` : ''}Unit {user.unit_number}
+                </span>
+              </div>
+            )}
           </div>
 
           <Button
@@ -113,11 +131,11 @@ function ResidentLayoutContent({ children }: { children: React.ReactNode }) {
       {/* Main View Area */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 md:px-8 flex justify-between items-center md:hidden">
-          <Link href="/resident/dashboard" className="flex items-center gap-2 font-bold text-base">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+          <Link href="/resident/dashboard" className="flex items-center gap-2 font-bold text-base overflow-hidden">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shrink-0">
               <Home className="h-4 w-4" />
             </div>
-            <span>SocietySync Resident</span>
+            <span className="truncate text-sm">{user?.society_name || 'SocietySync'}</span>
           </Link>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -129,7 +147,15 @@ function ResidentLayoutContent({ children }: { children: React.ReactNode }) {
 
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-3 space-y-1">
+          <div className="md:hidden border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-3 space-y-2">
+            <div className="p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs">
+              <p className="font-bold text-zinc-900 dark:text-zinc-100">
+                {user?.first_name} {user?.last_name}
+              </p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                {user?.unit_number ? `Flat ${user.unit_number}` : ''}{user?.building_name ? ` • ${user.building_name}` : ''} • {user?.society_name || 'Society Member'}
+              </p>
+            </div>
             {residentNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;

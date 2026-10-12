@@ -33,6 +33,9 @@ export interface User {
     membership_status: MembershipStatus;
     unit_id?: string | null;
     unit_number?: string | null;
+    building_name?: string | null;
+    floor_number?: number | null;
+    society_name?: string | null;
 }
 export interface AuthTokens {
       access_token: string;

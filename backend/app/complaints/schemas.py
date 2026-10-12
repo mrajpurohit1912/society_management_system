@@ -110,4 +110,5 @@ class ComplaintSummaryMetrics(BaseModel):
     closed_tickets: int
     overdue_sla_tickets: int
     average_rating: Optional[float] = None
+    average_satisfaction_rating: Optional[float] = None
     by_category: Dict[str, int]

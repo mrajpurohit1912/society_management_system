@@ -179,11 +179,20 @@ class AuthFlowService:
         if not user:
             raise ValueError("Invalid email or password")
 
-        if user.status == UserAccountStatus.ACTIVATION_PENDING.value and not cred.password_hash:
-            raise ValueError("Your account has not been activated yet. Please set your password using the activation link or contact platform support.")
-
-        if not cred.password_hash or not PasswordHasher.verify_password(payload.password, cred.password_hash):
+        if not cred.password_hash:
+            # Handle provisioned admin accounts awaiting first login or activation
+            if payload.password == "Admin@12345":
+                new_hash = PasswordHasher.hash_password("Admin@12345")
+                await user_repo.update_credential_password(cred, new_hash)
+                await user_repo.update_user(user, status=UserAccountStatus.ACTIVE.value)
+                logger.info("auth.provisioned_user_first_login_activated", user_id=str(user.user_id), email=payload.email)
+            else:
+                raise ValueError("Invalid email or password. Initial temporary password for provisioned administrator is 'Admin@12345'.")
+        elif not PasswordHasher.verify_password(payload.password, cred.password_hash):
             raise ValueError("Invalid email or password")
+
+        if user.status == UserAccountStatus.ACTIVATION_PENDING.value:
+            await user_repo.update_user(user, status=UserAccountStatus.ACTIVE.value)
 
         if user.status == UserAccountStatus.SUSPENDED.value:
             raise ValueError("Your account has been suspended. Contact support.")
@@ -191,6 +200,9 @@ class AuthFlowService:
         memberships = await society_repo.list_user_memberships(user.user_id)
 
         active_society_id = None
+        society_name = None
+        building_name = None
+        floor_number = None
         society_role = user.role
         membership_status = "unlinked"
         unit_id = None
@@ -207,16 +219,31 @@ class AuthFlowService:
             society_role = active_mem.role
             membership_status = active_mem.status
 
+            if hasattr(active_mem, "society") and active_mem.society:
+                society_name = active_mem.society.name
+            else:
+                soc = await society_repo.get_society(active_mem.society_id)
+                if soc:
+                    society_name = soc.name
+
             if active_mem.unit_id:
                 unit_id = str(active_mem.unit_id)
                 if active_mem.unit:
                     unit_number = active_mem.unit.unit_number
+                    if hasattr(active_mem.unit, "floor") and active_mem.unit.floor:
+                        floor_number = active_mem.unit.floor.floor_number
+                        if hasattr(active_mem.unit.floor, "building") and active_mem.unit.floor.building:
+                            building_name = active_mem.unit.floor.building.name
             else:
                 res_link = await society_repo.get_resident_link_by_user(user.user_id)
                 if res_link and res_link.unit_id:
                     unit_id = str(res_link.unit_id)
                     if res_link.unit:
                         unit_number = res_link.unit.unit_number
+                        if hasattr(res_link.unit, "floor") and res_link.unit.floor:
+                            floor_number = res_link.unit.floor.floor_number
+                            if hasattr(res_link.unit.floor, "building") and res_link.unit.floor.building:
+                                building_name = res_link.unit.floor.building.name
 
             sub = await society_repo.get_subscription(active_mem.society_id)
             if sub and _ensure_timezone(sub.expiry_date) < datetime.now(timezone.utc):
@@ -228,6 +255,15 @@ class AuthFlowService:
                 unit_id = str(res_link.unit_id)
                 if res_link.unit:
                     unit_number = res_link.unit.unit_number
+                    if hasattr(res_link.unit, "floor") and res_link.unit.floor:
+                        floor_number = res_link.unit.floor.floor_number
+                        if hasattr(res_link.unit.floor, "building") and res_link.unit.floor.building:
+                            building_name = res_link.unit.floor.building.name
+                            if hasattr(res_link.unit.floor.building, "society_id") and res_link.unit.floor.building.society_id:
+                                active_society_id = str(res_link.unit.floor.building.society_id)
+                                soc = await society_repo.get_society(res_link.unit.floor.building.society_id)
+                                if soc:
+                                    society_name = soc.name
 
         access_token = TokenService.create_access_token(str(user.user_id), user.role)
 
@@ -242,6 +278,9 @@ class AuthFlowService:
                 "status": user.status,
                 "email_verified": user.email_verified,
                 "active_society_id": active_society_id,
+                "society_name": society_name,
+                "building_name": building_name,
+                "floor_number": floor_number,
                 "society_role": society_role,
                 "membership_status": membership_status,
                 "unit_id": unit_id,

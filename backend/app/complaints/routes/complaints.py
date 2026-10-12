@@ -97,10 +97,10 @@ async def list_society_complaints(
     unit_id: Optional[uuid.UUID] = None,
     assigned_to: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(require_society_admin),
+    current_user: UserModel = Depends(require_society_member),
 ):
     """
-    Admin Endpoint: Query society tickets with optional filters.
+    Query society tickets with optional filters. Accessible to society members and admins.
     """
     service = ComplaintService(db)
     return await service.list_complaints(
@@ -244,14 +244,17 @@ async def add_complaint_comment(
 ):
     """
     Resident/Admin Endpoint: Post a message or progress update to the ticket activity timeline.
+    Only ticket creators or society administrators can post remarks.
     """
     service = ComplaintService(db)
+    is_admin = current_user.role in ("platform_admin", "admin", "society_admin", "committee")
     async with safe_transaction(db):
         comment = await service.add_comment(
             user_id=current_user.user_id,
             society_id=society_id,
             ticket_id=ticket_id,
             payload=payload,
+            is_admin=is_admin,
         )
     return comment
 
